@@ -1,0 +1,7 @@
+dependencies {
+    implementation project(':common')
+    compileOnly 'net.neoforged.fancymodloader:loader:4.0.39'
+}
+jar { archiveBaseName = 'taxilink-neoforge-1.21.1'; from project(':common').sourceSets.main.output }
+sourcesJar { from project(':common').sourceSets.main.allSource }
+processResources { filesMatching('META-INF/neoforge.mods.toml') { expand version: project.version } }

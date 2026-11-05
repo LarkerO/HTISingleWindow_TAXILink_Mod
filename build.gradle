@@ -1,0 +1,33 @@
+allprojects {
+    group = 'cn.bg7qvu.htisw.taxilink'
+    version = '0.1.0'
+    repositories {
+        mavenCentral()
+        maven { url = 'https://libraries.minecraft.net/' }
+        maven { url = 'https://maven.fabricmc.net/' }
+        maven { url = 'https://maven.neoforged.net/releases/' }
+    }
+}
+subprojects {
+    apply plugin: 'java-library'
+    java { toolchain { languageVersion = JavaLanguageVersion.of(21) }; withSourcesJar() }
+    tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8'; options.release = 21 }
+    tasks.withType(AbstractArchiveTask).configureEach { preserveFileTimestamps = false; reproducibleFileOrder = true }
+    tasks.withType(Test).configureEach { useJUnitPlatform() }
+}
+
+tasks.register('stageRelease', Sync) {
+    dependsOn ':common:test', ':fabric:jar', ':neoforge:jar'
+    into layout.projectDirectory.dir("dist/TAXILink-${version}")
+    from(project(':fabric').tasks.named('jar'))
+    from(project(':neoforge').tasks.named('jar'))
+    from('README.md', 'LICENSE', 'config.example.json')
+    from('docs') { into 'docs' }
+    from('examples') { into 'examples' }
+}
+tasks.register('packageRelease', Zip) {
+    dependsOn 'stageRelease'
+    archiveFileName = "TAXILink-${version}.zip"
+    destinationDirectory = layout.projectDirectory.dir('dist')
+    from layout.projectDirectory.dir("dist/TAXILink-${version}")
+}

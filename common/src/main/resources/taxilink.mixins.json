@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "cn.bg7qvu.htisw.taxilink.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["VehicleDoorsMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

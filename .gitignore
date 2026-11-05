@@ -1,0 +1,24 @@
+.gradle/
+**/build/
+.reference/
+/dist/
+
+# Local reference source and third-party mod binaries (not redistributed)
+/Minecraft-Transit-Railway/
+/architectury-*.jar
+/mtr-*.jar
+
+# Local server configuration, state and credentials
+run/
+config/taxilink.json
+taxilink-state/
+*.log
+.env
+.env.*
+
+# Editor and OS metadata
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+.DS_Store

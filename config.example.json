@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "endpoint": "wss://dispatch.example.com/taxilink",
+  "tokenEnvironment": "TAXILINK_TOKEN",
+  "serverId": "taxilink-01",
+  "allowInsecureLocalhost": false,
+  "telemetrySeconds": 2,
+  "generationTimeoutSeconds": 60,
+  "maxActiveRides": 64,
+  "maxMessageBytes": 65536,
+  "maxPendingCommands": 128,
+  "allowedDepots": {
+    "minecraft/overworld": ["123456789012345678"]
+  }
+}
