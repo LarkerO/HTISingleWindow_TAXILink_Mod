@@ -11,11 +11,12 @@ final class TaxilinkProtocol
 
     public function command(string $type, array $params = [], ?string $requestId = null): string
     {
-        $allowed = ['taxi.create', 'taxi.status', 'taxi.list', 'taxi.passengers', 'taxi.doors', 'taxi.destroy'];
+        $allowed = ['taxi.create', 'taxi.status', 'taxi.list', 'taxi.passengers', 'taxi.doors', 'taxi.destroy',
+            'mtr.dimensions', 'mtr.depots', 'mtr.sidings', 'mtr.routes', 'mtr.stations', 'mtr.platforms'];
         if (!in_array($type, $allowed, true)) {
             throw new InvalidArgumentException('Unknown TAXILink command');
         }
-        foreach (['depotId', 'sidingId', 'pickupPlatformId', 'dropoffPlatformId'] as $key) {
+        foreach (['depotId', 'sidingId', 'stationId', 'pickupPlatformId', 'dropoffPlatformId'] as $key) {
             if (array_key_exists($key, $params) &&
                 (!is_string($params[$key]) || !preg_match('/^-?[1-9][0-9]{0,18}$/D', $params[$key]))) {
                 throw new InvalidArgumentException($key . ' must be a decimal string');

@@ -1,6 +1,6 @@
 allprojects {
     group = 'cn.bg7qvu.htisw.taxilink'
-    version = '0.1.0'
+    version = '0.2.0'
     repositories {
         mavenCentral()
         maven { url = 'https://libraries.minecraft.net/' }
@@ -23,7 +23,10 @@ tasks.register('stageRelease', Sync) {
     from(project(':neoforge').tasks.named('jar'))
     from('README.md', 'LICENSE', 'config.example.json')
     from('docs') { into 'docs' }
-    from('examples') { into 'examples' }
+    from('examples') {
+        into 'examples'
+        exclude '**/vendor/**', '**/runtime/**', '**/.env', '**/.env.*'
+    }
 }
 tasks.register('packageRelease', Zip) {
     dependsOn 'stageRelease'

@@ -5,7 +5,7 @@
 ## 已验证
 
 - Java 21 + Gradle 8.14 构建 Fabric、NeoForge 两个独立服务端 jar。
-- 自动化测试共 14 项，全部通过（协议 3、实际 MTR 调度/恢复 10、WebSocket 1）。
+- 0.2.0 自动化测试共 21 项（协议 3、实际 MTR 调度/恢复/地图目录 16、WebSocket 1、真实 PHP 网关 1）。未配置 PHP 时最后一项会跳过；本次已配置 PHP 8.3.36 并执行。
 - 自动化测试直接使用根目录提供的 **MTR 4.1.0-beta.2 实际 Core 类**，不是 MTR mock。
 - 完整模拟行程：生成路线→从车厂出发→经过上下车点→回厂→清理路线和恢复配置。
 - 行程中多次 `Simulator.setGameTime` 后仍运行并完成；实际速度不超过订单限速。
@@ -15,8 +15,11 @@
 - 真实 MTR 登车/下车记录检测，有人拒绝销毁，静止车辆门控命令与覆盖状态登记。
 - 64 位正负 ID、类型和范围校验。
 - 本机真实 RFC 6455 握手，Authorization/服务端身份头，订阅消息，分片文本重组。
+- 地图车厂/车厂轨道/路线/车站/站台读取，非白名单车厂仍可查询，路线停站顺序和来源识别，稳定分页与地图变更检测。
+- 自定义路线名称、预约人数与容量校验；三名玩家同时登车、部分下车后仍禁止销毁、最后一人下车后销毁。
+- PHP 协议辅助类脚本测试通过，PHP 文件语法检查通过。真实启动 Workerman 5.2.3，验证 HTTP 鉴权/离线/请求往返/事件与断线，查询响应来自实际 MTR Core。
 
-测试报告：`common/build/reports/tests/test/index.html`。测试不启动 Minecraft，所以**不等于**游戏服内 Fabric/NeoForge 的加载、Mixin 应用和乘坐联调。没有 PHP 解释器，PHP 辅助类未在本机执行。WebSocket 测试使用本地 Java 测试端点，不是用户生产 PHP 服务。
+测试报告：`common/build/reports/tests/test/index.html`。测试不启动 Minecraft，所以**不等于**游戏服内 Fabric/NeoForge 的加载、Mixin 应用和乘坐联调。PHP 网关测试为本机独立 Workerman runner，webman 接入配置依官方自定义进程接口提供，未在用户现有 webman/生产 PHP 项目内执行。
 
 目标依赖 SHA-256：
 

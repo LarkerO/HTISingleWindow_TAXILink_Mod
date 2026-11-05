@@ -22,3 +22,5 @@ taxilink-state/
 *.iml
 Thumbs.db
 .DS_Store
+**/vendor/
+**/runtime/

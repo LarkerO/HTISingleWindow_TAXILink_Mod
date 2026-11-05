@@ -72,6 +72,8 @@ public final class RideService {
         recovered = true;
     }
     public JsonObject command(Simulator sim, String type, JsonObject p) {
+        if (MtrCatalog.COMMANDS.contains(type)) return MtrCatalog.query(sim, type, p, config,
+            routeId -> rides.values().stream().filter(r -> r.routeId == routeId).map(r -> r.orderId).findFirst().orElse(null));
         if (type.equals("taxi.create")) return create(sim, p);
         if (type.equals("taxi.list")) {
             JsonArray result = new JsonArray();
@@ -82,7 +84,7 @@ public final class RideService {
         if (ride == null) throw new Fault("ORDER_NOT_FOUND", "Unknown orderId");
         return switch (type) {
             case "taxi.status" -> status(sim, ride);
-            case "taxi.passengers" -> data("orderId", ride.orderId, "passengers", passengers(sim, ride));
+            case "taxi.passengers" -> passengerStatus(sim, ride);
             case "taxi.destroy" -> {
                 if (!ride.terminal()) {
                     if (!passengers(sim, ride).isEmpty()) throw new Fault("VEHICLE_OCCUPIED", "Passengers must disembark before destruction");
@@ -138,6 +140,10 @@ public final class RideService {
             cars.add(new VehicleCar(string(c, "vehicleId"), length, number(c, "width", 0.1, 20), (long) capacity, number(c, "bogie1Position", -length / 2, length / 2), number(c, "bogie2Position", -length / 2, length / 2), number(c, "couplingPadding1", 0, 10), number(c, "couplingPadding2", 0, 10)));
         }
         if (Siding.getTotalVehicleLength(cars) > siding.getRailLength()) throw new Fault("VEHICLE_TOO_LONG", "Cars do not fit the siding");
+        int capacity = Math.toIntExact(cars.stream().mapToLong(VehicleCar::getCapacity).sum());
+        int passengerCount = MtrCatalog.integer(p, "passengerCount", 1, 1, 16000);
+        if (passengerCount > capacity) throw new Fault("INSUFFICIENT_CAPACITY", "Requested passengers exceed total vehicle capacity");
+        String customRouteName = p.has("routeName") ? string(p, "routeName") : null;
         Ride ride = new Ride();
         ride.orderId = orderId; ride.dimension = sim.dimension;
         ride.plate = "TX-" + UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
@@ -145,7 +151,7 @@ public final class RideService {
         ride.createdAt = System.currentTimeMillis(); ride.deadline = ride.createdAt + config.generationTimeoutSeconds * 1000L;
         ride.depotBackup = Utilities.getJsonObjectFromData(depot); ride.sidingBackup = Utilities.getJsonObjectFromData(siding);
         Route route = new Route(depot.getTransportMode(), sim);
-        route.setName("TAXILink " + ride.plate); route.setRouteNumber(ride.plate); route.setHidden(true);
+        route.setName(customRouteName == null ? "TAXILink " + ride.plate : customRouteName); route.setRouteNumber(ride.plate); route.setHidden(true);
         route.getRoutePlatforms().add(new RoutePlatformData(pickupId)); route.getRoutePlatforms().add(new RoutePlatformData(dropoffId));
         ride.routeId = route.getId();
         save(ride); // Write-ahead journal precedes the first MTR mutation.
@@ -243,11 +249,24 @@ public final class RideService {
     private JsonObject summary(Ride ride) {
         return data("orderId", ride.orderId, "plate", ride.plate, "dimension", ride.dimension, "phase", ride.phase,
             "depotId", Long.toString(ride.depotId), "sidingId", Long.toString(ride.sidingId), "routeId", Long.toString(ride.routeId),
+            "routeName", ride.params.has("routeName") ? ride.params.get("routeName").getAsString() : "TAXILink " + ride.plate,
+            "routeNumber", ride.plate, "routeHidden", true, "capacity", capacity(ride),
+            "requestedPassengerCount", ride.params.has("passengerCount") ? ride.params.get("passengerCount").getAsInt() : 1,
             "vehicleId", ride.vehicleId == 0 ? null : Long.toString(ride.vehicleId), "error", ride.error);
+    }
+    private int capacity(Ride ride) {
+        int result = 0;
+        for (JsonElement car : ride.params.getAsJsonArray("vehicleCars")) result += car.getAsJsonObject().get("capacity").getAsInt();
+        return result;
+    }
+    private JsonObject passengerStatus(Simulator sim, Ride ride) {
+        List<JsonObject> players = passengers(sim, ride);
+        return data("orderId", ride.orderId, "capacity", capacity(ride), "onboardCount", players.size(),
+            "remainingCapacity", Math.max(0, capacity(ride) - players.size()), "overCapacity", players.size() > capacity(ride), "passengers", players);
     }
     private JsonObject status(Simulator sim, Ride ride) {
         JsonObject result = summary(ride); Vehicle v = vehicle(sim, ride);
-        result.add("passengers", GSON.toJsonTree(passengers(sim, ride)));
+        passengerStatus(sim, ride).entrySet().forEach(e -> result.add(e.getKey(), e.getValue()));
         result.addProperty("sampledAt", System.currentTimeMillis());
         result.add("position", JsonNull.INSTANCE); result.add("etaPickupSeconds", JsonNull.INSTANCE); result.add("etaDropoffSeconds", JsonNull.INSTANCE);
         if (v != null && !ride.terminal()) {

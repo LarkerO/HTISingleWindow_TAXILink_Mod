@@ -4,4 +4,7 @@ dependencies {
 }
 jar { archiveBaseName = 'taxilink-neoforge-1.21.1'; from project(':common').sourceSets.main.output }
 sourcesJar { from project(':common').sourceSets.main.allSource }
-processResources { filesMatching('META-INF/neoforge.mods.toml') { expand version: project.version } }
+processResources {
+    inputs.property('modVersion', project.version)
+    filesMatching('META-INF/neoforge.mods.toml') { expand version: project.version }
+}

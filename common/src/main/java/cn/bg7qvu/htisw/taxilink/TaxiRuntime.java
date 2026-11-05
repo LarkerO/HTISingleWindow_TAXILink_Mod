@@ -73,7 +73,12 @@ public final class TaxiRuntime implements AutoCloseable {
             string(request, "requestId");
             if (!request.has("v") || request.get("v").getAsInt() != 1) throw new Fault("UNSUPPORTED_VERSION", "v must be 1");
             if (!config.serverId.equals(string(request, "serverId"))) throw new Fault("WRONG_SERVER", "serverId mismatch");
-            if (!Set.of("taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.destroy", "taxi.passengers").contains(type)) throw new Fault("UNKNOWN_COMMAND", type);
+            if (type.equals("mtr.dimensions")) {
+                List<String> dimensions = contexts.keySet().stream().sorted().toList();
+                link.send(data("type", "response", "requestId", request.get("requestId").getAsString(), "ok", true, "data", data("dimensions", dimensions)));
+                return;
+            }
+            if (!Set.of("taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.destroy", "taxi.passengers").contains(type) && !MtrCatalog.COMMANDS.contains(type)) throw new Fault("UNKNOWN_COMMAND", type);
             String dimension = string(request, "dimension");
             Context context = contexts.get(dimension);
             if (context == null) throw new Fault("DIMENSION_NOT_READY", "Unknown or uninitialized MTR dimension");

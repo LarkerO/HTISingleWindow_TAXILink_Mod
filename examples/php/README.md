@@ -2,6 +2,8 @@
 
 `TaxilinkProtocol.php` 是 PHP 8.1+ 的消息编解码与鉴权辅助类，不绑定 Workerman、Swoole 或 Ratchet，也不自己启动 WebSocket 服务。
 
+0.2.0 附带可直接启动的 Workerman 调试网关，以及同一处理器的 webman 自定义进程配置。启动和 HTTP 调试方法见 [`webman/README.md`](webman/README.md)。地图接口见 [`../../docs/MTR_CATALOG.md`](../../docs/MTR_CATALOG.md)。
+
 ```php
 require __DIR__ . '/TaxilinkProtocol.php';
 $protocol = new TaxilinkProtocol('taxilink-01');

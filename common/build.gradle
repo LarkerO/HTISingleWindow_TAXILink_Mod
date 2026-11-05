@@ -7,3 +7,6 @@ dependencies {
     testRuntimeOnly 'org.apache.logging.log4j:log4j-core:2.24.3'
     testImplementation 'org.apache.logging.log4j:log4j-api:2.24.3'
 }
+tasks.named('test') {
+    inputs.property('phpIntegrationEnabled', providers.environmentVariable('TAXILINK_TEST_PHP').map { true }.orElse(false))
+}

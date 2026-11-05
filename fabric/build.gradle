@@ -4,4 +4,7 @@ dependencies {
 }
 jar { archiveBaseName = 'taxilink-fabric-1.21.1'; from project(':common').sourceSets.main.output }
 sourcesJar { from project(':common').sourceSets.main.allSource }
-processResources { filesMatching('fabric.mod.json') { expand version: project.version } }
+processResources {
+    inputs.property('modVersion', project.version)
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}

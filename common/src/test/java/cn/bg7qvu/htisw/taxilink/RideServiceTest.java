@@ -128,7 +128,10 @@ class RideServiceTest {
         assertTrue(sim.routes.isEmpty()); assertTrue(depot.getRouteIds().isEmpty());
     }
     @Test void readsRealRidingRecordsRejectsOccupiedDestructionAndControlsStoppedDoors() throws Exception {
-        service.command(sim, "taxi.create", request());
+        JsonObject group = request(); group.addProperty("passengerCount", 3);
+        JsonObject accepted = service.command(sim, "taxi.create", group);
+        assertEquals(3, accepted.get("requestedPassengerCount").getAsInt());
+        assertEquals(4, accepted.get("capacity").getAsInt());
         var tick = Simulator.class.getDeclaredMethod("tick", long.class); tick.setAccessible(true);
         JsonObject query = data("orderId", "test-order");
         Vehicle vehicle = null;
@@ -141,10 +144,13 @@ class RideServiceTest {
             }
         }
         assertNotNull(vehicle); assertFalse(vehicle.isMoving());
-        UUID passenger = UUID.randomUUID();
-        siding.updateVehicleRidingEntities(vehicle.getId(), new ObjectArrayList<>(List.of(new VehicleRidingEntity(passenger, 0, 0, 0, 0, false, false, false, false, false, false, false))));
+        UUID passenger = UUID.randomUUID(), second = UUID.randomUUID(), third = UUID.randomUUID();
+        siding.updateVehicleRidingEntities(vehicle.getId(), new ObjectArrayList<>(List.of(riding(passenger, 0), riding(second, 0), riding(third, 0))));
         JsonArray riders = service.command(sim, "taxi.passengers", query).getAsJsonArray("passengers");
-        assertEquals(1, riders.size()); assertEquals(passenger.toString(), riders.get(0).getAsJsonObject().get("uuid").getAsString());
+        assertEquals(3, riders.size());
+        assertEquals(Set.of(passenger.toString(), second.toString(), third.toString()), riders.asList().stream().map(e -> e.getAsJsonObject().get("uuid").getAsString()).collect(java.util.stream.Collectors.toSet()));
+        JsonObject onboard = service.command(sim, "taxi.status", query);
+        assertEquals(3, onboard.get("onboardCount").getAsInt()); assertEquals(1, onboard.get("remainingCapacity").getAsInt());
         assertEquals("VEHICLE_OCCUPIED", assertThrows(Fault.class, () -> service.command(sim, "taxi.destroy", query)).code);
         assertFalse(sim.routes.isEmpty());
         service.command(sim, "taxi.doors", data("orderId", "test-order", "state", "open"));
@@ -152,9 +158,99 @@ class RideServiceTest {
         assertTrue(DoorControl.blocks(vehicle.vehicleExtraData, false));
         service.command(sim, "taxi.doors", data("orderId", "test-order", "state", "closed"));
         assertEquals(-1, vehicle.vehicleExtraData.getDoorMultiplier());
-        siding.updateVehicleRidingEntities(vehicle.getId(), new ObjectArrayList<>(List.of(new VehicleRidingEntity(passenger, -1, 0, 0, 0, false, false, false, false, false, false, false))));
+        siding.updateVehicleRidingEntities(vehicle.getId(), new ObjectArrayList<>(List.of(riding(passenger, -1), riding(second, -1))));
+        assertEquals(1, service.command(sim, "taxi.passengers", query).get("onboardCount").getAsInt());
+        assertEquals("VEHICLE_OCCUPIED", assertThrows(Fault.class, () -> service.command(sim, "taxi.destroy", query)).code);
+        siding.updateVehicleRidingEntities(vehicle.getId(), new ObjectArrayList<>(List.of(riding(third, -1))));
         assertTrue(service.command(sim, "taxi.passengers", query).getAsJsonArray("passengers").isEmpty());
         assertEquals("DESTROYED", service.command(sim, "taxi.destroy", query).get("phase").getAsString());
+    }
+    VehicleRidingEntity riding(UUID uuid, int car) { return new VehicleRidingEntity(uuid, car, 0, 0, 0, false, false, false, false, false, false, false); }
+    @Test void groupSizeMustFitAndRouteNameIsReturnedAndPersisted() throws Exception {
+        JsonObject invalid = request(); invalid.addProperty("passengerCount", 5);
+        assertEquals("INSUFFICIENT_CAPACITY", assertThrows(Fault.class, () -> service.command(sim, "taxi.create", invalid)).code);
+        invalid.addProperty("passengerCount", 1.5);
+        assertEquals("INVALID_REQUEST", assertThrows(Fault.class, () -> service.command(sim, "taxi.create", invalid)).code);
+        assertTrue(sim.routes.isEmpty());
+        JsonObject group = request(); group.addProperty("passengerCount", 4); group.addProperty("routeName", "网约车 · 四人同行");
+        JsonObject created = service.command(sim, "taxi.create", group);
+        Route route = sim.routes.iterator().next();
+        assertEquals("网约车 · 四人同行", route.getName()); assertEquals(created.get("plate").getAsString(), route.getRouteNumber());
+        assertEquals(route.getName(), created.get("routeName").getAsString()); assertTrue(route.getHidden());
+        RideService restarted = new RideService(config, temp.resolve("journal"), sim.dimension, events::add);
+        restarted.recover(sim);
+        assertEquals("网约车 · 四人同行", restarted.command(sim, "taxi.status", data("orderId", "test-order")).get("routeName").getAsString());
+    }
+    @Test void catalogReturnsExistingInfrastructureOutsideTaxiWhitelist() {
+        Depot other = new Depot(TransportMode.TRAIN, sim); other.setName("普通运营车厂");
+        other.setCorners(new Position(100, 63, 0), new Position(110, 65, 5)); sim.depots.add(other); sim.sync();
+        JsonObject depots = service.command(sim, "mtr.depots", data());
+        assertEquals(2, depots.get("total").getAsInt());
+        JsonObject ordinary = depots.getAsJsonArray("items").asList().stream().map(JsonElement::getAsJsonObject).filter(d -> d.get("id").getAsString().equals(Long.toString(other.getId()))).findFirst().orElseThrow();
+        assertFalse(ordinary.get("allowedForTaxi").getAsBoolean());
+        JsonObject sidings = service.command(sim, "mtr.sidings", data("depotId", Long.toString(depot.getId())));
+        assertEquals(1, sidings.get("total").getAsInt());
+        assertTrue(sidings.getAsJsonArray("items").get(0).getAsJsonObject().get("vehicleCars").isJsonArray());
+    }
+    @Test void stationCatalogIncludesStationPlatformMappingAndOrphanPlatforms() {
+        Station station = new Station(sim); station.setName("上车站");
+        station.setCorners(new Position(29, 63, -1), new Position(41, 65, 1)); sim.stations.add(station); sim.sync();
+        JsonObject stations = service.command(sim, "mtr.stations", data());
+        assertEquals(1, stations.get("total").getAsInt());
+        assertEquals(1, stations.getAsJsonArray("items").get(0).getAsJsonObject().get("platformCount").getAsInt());
+        JsonObject platforms = service.command(sim, "mtr.platforms", data("stationId", Long.toString(station.getId())));
+        assertEquals(1, platforms.get("total").getAsInt());
+        assertEquals(Long.toString(pickup.getId()), platforms.getAsJsonArray("items").get(0).getAsJsonObject().get("id").getAsString());
+        assertEquals(2, service.command(sim, "mtr.platforms", data()).get("total").getAsInt());
+    }
+    @Test void routeCatalogPreservesStopOrderAndIdentifiesOwnRoutes() {
+        Route ordinary = new Route(TransportMode.TRAIN, sim); ordinary.setName("TAXILink prefix is not ownership");
+        ordinary.getRoutePlatforms().add(new RoutePlatformData(dropoff.getId())); ordinary.getRoutePlatforms().add(new RoutePlatformData(pickup.getId()));
+        sim.routes.add(ordinary); sim.sync();
+        service.command(sim, "taxi.create", request());
+        JsonObject result = service.command(sim, "mtr.routes", data());
+        assertEquals(2, result.get("total").getAsInt());
+        for (JsonElement entry : result.getAsJsonArray("items")) {
+            JsonObject route = entry.getAsJsonObject();
+            if (route.get("id").getAsString().equals(Long.toString(ordinary.getId()))) {
+                assertFalse(route.get("taxilinkManaged").getAsBoolean());
+                assertEquals(Long.toString(dropoff.getId()), route.getAsJsonArray("platformIds").get(0).getAsString());
+            } else { assertTrue(route.get("taxilinkManaged").getAsBoolean()); assertEquals("test-order", route.get("orderId").getAsString()); }
+        }
+    }
+    @Test void catalogPaginatesWithoutDuplicatesAndDetectsChanges() {
+        for (int i = 0; i < 4; i++) {
+            Depot d = new Depot(TransportMode.TRAIN, sim); d.setName("Depot " + i); sim.depots.add(d);
+        }
+        Set<String> seen = new HashSet<>();
+        JsonObject first = service.command(sim, "mtr.depots", data("limit", 2));
+        JsonObject page = first;
+        while (true) {
+            for (JsonElement e : page.getAsJsonArray("items")) assertTrue(seen.add(e.getAsJsonObject().get("id").getAsString()));
+            if (page.get("nextOffset").isJsonNull()) break;
+            page = service.command(sim, "mtr.depots", data("offset", page.get("nextOffset").getAsInt(), "limit", 2, "revision", first.get("revision").getAsString()));
+        }
+        assertEquals(5, seen.size());
+        depot.setName("Edited");
+        assertEquals("CATALOG_CHANGED", assertThrows(Fault.class, () -> service.command(sim, "mtr.depots", data("offset", 2, "revision", first.get("revision").getAsString()))).code);
+        assertEquals("INVALID_REQUEST", assertThrows(Fault.class, () -> service.command(sim, "mtr.depots", data("offset", 0.5))).code);
+    }
+    @Test void catalogByteBudgetStillAllowsCompleteEnumeration() {
+        for (int i = 0; i < 120; i++) {
+            Depot d = new Depot(TransportMode.TRAIN, sim); d.setName("车厂".repeat(100) + i); sim.depots.add(d);
+        }
+        JsonObject first = service.command(sim, "mtr.depots", data("limit", 500));
+        assertFalse(first.get("nextOffset").isJsonNull());
+        assertTrue(first.getAsJsonArray("items").size() < 121);
+        JsonObject page = first;
+        int count = 0;
+        while (true) {
+            assertTrue(page.getAsJsonArray("items").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 48 * 1024 + 2);
+            count += page.getAsJsonArray("items").size();
+            if (page.get("nextOffset").isJsonNull()) break;
+            page = service.command(sim, "mtr.depots", data("offset", page.get("nextOffset").getAsInt(), "limit", 500, "revision", first.get("revision").getAsString()));
+        }
+        assertEquals(121, count);
     }
     @Test void authorizationAndDimensionsAreValidatedBeforeMutation() {
         config.allowedDepots.clear();
