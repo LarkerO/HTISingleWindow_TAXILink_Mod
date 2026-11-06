@@ -4,8 +4,8 @@
   "version": "${version}",
   "name": "TAXILink",
   "description": "Server-side MTR ride hailing bridge",
-  "environment": "server",
+  "environment": "*",
   "mixins": ["taxilink.mixins.json"],
-  "entrypoints": { "server": ["cn.bg7qvu.htisw.taxilink.fabric.TaxiLinkFabric"] },
+  "entrypoints": { "main": ["cn.bg7qvu.htisw.taxilink.fabric.TaxiLinkFabric"] },
   "depends": { "fabricloader": ">=0.16.10", "minecraft": "1.21.1", "java": ">=21", "architectury": "13.0.8", "mtr": "4.1.0-beta.2" }
 }

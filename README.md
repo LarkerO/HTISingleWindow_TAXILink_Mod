@@ -2,7 +2,7 @@
 
 服务端网约车调度桥接模组。Minecraft **1.21.1**、Architectury API **13.0.8**、MTR **4.1.0-beta.2**、Java **21**。包名前缀 `cn.bg7qvu.htisw.taxilink`。
 
-TAXILink 只装服务端；乘客客户端仍需要正常安装 MTR、MTR 所需依赖及车辆资源包。TAXILink 不注册客户端内容或网络通道。
+独立服务器只需在服务端安装 TAXILink。单机或局域网联机由存档房主将 TAXILink 安装到自己的游戏实例。乘客需要安装 MTR、MTR 依赖及车辆资源包。
 
 ## 构建与安装
 
@@ -17,12 +17,12 @@ $env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-21'
 
 构建产物：
 
-- `fabric/build/libs/taxilink-fabric-1.21.1-0.2.0.jar`
-- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.2.0.jar`
+- `fabric/build/libs/taxilink-fabric-1.21.1-0.2.1.jar`
+- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.2.1.jar`
 
 选对应加载器 jar 放入服务端 `mods`。不要安装 common jar、sources jar 或同时安装两个版本。服务端另装对应平台的 Architectury 13.0.8 和 MTR 4.1.0-beta.2。根目录提供的 MTR jar 的 NeoForge 元数据声明 Minecraft 1.21.1；Fabric 服务端需要另用 MTR 的 Fabric 发行包。
 
-首次启动会生成 `config/taxilink.json`，默认关闭。编辑配置，设置 WebSocket 地址、服务端标识、专用车厂白名单。通过启动服务器的环境变量 `TAXILINK_TOKEN` 设置令牌，重启生效。参考 `config.example.json`。
+独立服务器首次启动、或游戏实例首次打开单机存档时，会在对应实例的 `config` 目录生成 `taxilink.json`，默认关闭。单机可从日志里的 TAXILink 路径找到配置。编辑 WebSocket 地址、服务端标识和专用车厂白名单，并在启动 Minecraft 的进程环境中设置 `TAXILINK_TOKEN`。单机退出后重新打开存档即可重新读取配置。单机订单日志跟随存档，保存在各维度的 MTR 数据目录下。参考 `config.example.json`。
 
 ```powershell
 $env:TAXILINK_TOKEN = 'replace-with-a-long-random-token'

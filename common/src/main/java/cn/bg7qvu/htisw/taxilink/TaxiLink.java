@@ -15,9 +15,15 @@ public final class TaxiLink {
         try {
             lifecycle("SERVER_STARTED", () -> {
                 try {
-                    Config config = Config.load(Path.of("config", "taxilink.json"));
-                    if (!config.enabled) { LOG.log(System.Logger.Level.INFO, "Disabled; configure config/taxilink.json to enable"); return; }
-                    runtime = new TaxiRuntime(config, Path.of("taxilink-state"));
+                    Class<?> platform = Class.forName("dev.architectury.platform.Platform");
+                    Path configPath = ((Path) platform.getMethod("getConfigFolder").invoke(null)).resolve("taxilink.json");
+                    Config config = Config.load(configPath);
+                    if (!config.enabled) {
+                        LOG.log(System.Logger.Level.INFO, "Disabled. Configure " + configPath.toAbsolutePath() + " to enable TAXILink.");
+                        return;
+                    }
+                    boolean integrated = ((Enum<?>) platform.getMethod("getEnvironment").invoke(null)).name().equals("CLIENT");
+                    runtime = new TaxiRuntime(config, integrated ? null : Path.of("taxilink-state"));
                     runtime.start();
                 } catch (Exception e) { LOG.log(System.Logger.Level.ERROR, "TAXILink startup failed", e); }
             });

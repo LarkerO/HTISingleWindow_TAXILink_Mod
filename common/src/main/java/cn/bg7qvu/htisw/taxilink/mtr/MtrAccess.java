@@ -3,6 +3,7 @@ package cn.bg7qvu.htisw.taxilink.mtr;
 import org.mtr.core.data.*;
 import org.mtr.core.simulation.Simulator;
 import java.lang.reflect.*;
+import java.nio.file.Path;
 import java.util.*;
 
 /** Version-locked private API boundary for MTR 4.1.0-beta.2. Never bundle MTR. */
@@ -34,6 +35,11 @@ public final class MtrAccess {
         field(Vehicle.class, "railProgress"); field(Vehicle.class, "speed");
         Siding.class.getDeclaredMethod("generatePathDistancesAndTimeSegments");
         VehicleExtraData.class.getDeclaredMethod("openDoors"); VehicleExtraData.class.getDeclaredMethod("closeDoors");
+    }
+    /** Keep integrated worlds separate even if their dimension and MTR IDs coincide. */
+    public static Path integratedStateRoot(Simulator simulator) {
+        Path depotsPath = (Path) read(read(simulator, "fileLoaderDepots"), "path");
+        return depotsPath.toAbsolutePath().getParent().resolve("taxilink-state");
     }
     /** Per-order copies cap automatic speed and braking lookahead without modifying shared physical rails. */
     public static void capPaths(Siding siding, double speedKmh) {

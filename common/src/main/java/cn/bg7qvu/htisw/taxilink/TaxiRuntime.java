@@ -36,7 +36,10 @@ public final class TaxiRuntime implements AutoCloseable {
         if (closed) return;
         try {
             for (Simulator sim : MtrAccess.simulators()) {
-                Context context = contexts.computeIfAbsent(sim.dimension, d -> new Context(sim, new RideService(config, state, d, link::send)));
+                Context context = contexts.computeIfAbsent(sim.dimension, d -> {
+                    Path stateRoot = state == null ? MtrAccess.integratedStateRoot(sim) : state;
+                    return new Context(sim, new RideService(config, stateRoot, d, link::send));
+                });
                 if (context.enqueued.compareAndSet(false, true)) sim.run(() -> process(context));
             }
             link.tick();

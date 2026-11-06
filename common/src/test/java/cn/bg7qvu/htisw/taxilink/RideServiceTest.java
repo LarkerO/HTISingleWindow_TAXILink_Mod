@@ -266,4 +266,10 @@ class RideServiceTest {
         assertEquals(80, path.getSpeedLimitKilometersPerHour());
     }
     @Test void apiBoundaryMatchesActualBetaJar() throws Exception { MtrAccess.verify(); }
+
+    @Test void integratedWorldsWithTheSameDimensionUseSeparateJournals() {
+        Simulator other = new Simulator(sim.dimension, new String[]{sim.dimension}, temp.resolve("other-world/mtr"), false);
+        assertEquals(temp.resolve("mtr/minecraft/overworld/taxilink-state"), MtrAccess.integratedStateRoot(sim));
+        assertNotEquals(MtrAccess.integratedStateRoot(sim), MtrAccess.integratedStateRoot(other));
+    }
 }
