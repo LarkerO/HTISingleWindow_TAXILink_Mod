@@ -15,6 +15,9 @@ public final class Config {
     public boolean allowInsecureLocalhost = false;
     public int telemetrySeconds = 2;
     public int generationTimeoutSeconds = 60;
+    public int pickupWaitSeconds = 300;
+    public int fullBoardingCloseDelaySeconds = 5;
+    public int closedDoorDepartureDelaySeconds = 5;
     public int maxActiveRides = 64;
     public int maxMessageBytes = 65536;
     public int maxPendingCommands = 128;
@@ -52,6 +55,9 @@ public final class Config {
         return allowedDepotIds(dimension).contains(Long.toString(depot));
     }
     public void validate() {
+        if (pickupWaitSeconds < 1 || pickupWaitSeconds > 3600 || fullBoardingCloseDelaySeconds < 0
+            || fullBoardingCloseDelaySeconds > 600 || closedDoorDepartureDelaySeconds < 0 || closedDoorDepartureDelaySeconds > 600)
+            throw new IllegalArgumentException("Invalid TAXILink pickup timing");
         URI uri = URI.create(endpoint);
         boolean local = List.of("localhost", "127.0.0.1", "::1", "[::1]").contains(uri.getHost());
         if (!("wss".equals(uri.getScheme()) || (allowInsecureLocalhost && local && "ws".equals(uri.getScheme()))) || uri.getUserInfo() != null || uri.getHost() == null)
@@ -66,7 +72,16 @@ public final class Config {
         Config config = Json.GSON.fromJson(root, Config.class);
         config.configDirectory = path.toAbsolutePath().getParent();
         config.depotAllowlist = new DepotAllowlist(config.configDirectory.resolve(DepotAllowlist.FILE_NAME), config.allowedDepots);
-        if (root.remove("allowedDepots") != null || fresh) Json.write(path, root);
+        boolean changed = root.remove("allowedDepots") != null || fresh;
+        for (var setting : Map.of("pickupWaitSeconds", config.pickupWaitSeconds,
+            "fullBoardingCloseDelaySeconds", config.fullBoardingCloseDelaySeconds,
+            "closedDoorDepartureDelaySeconds", config.closedDoorDepartureDelaySeconds).entrySet()) {
+            if (!root.has(setting.getKey())) {
+                root.addProperty(setting.getKey(), setting.getValue());
+                changed = true;
+            }
+        }
+        if (changed) Json.write(path, root);
         if (config.enabled) config.validate();
         return config;
     }

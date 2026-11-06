@@ -83,7 +83,7 @@ public final class TaxiRuntime implements AutoCloseable {
                 link.send(data("type", "response", "requestId", request.get("requestId").getAsString(), "ok", true, "data", data("dimensions", dimensions)));
                 return;
             }
-            if (!Set.of("taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.destroy", "taxi.passengers").contains(type)
+            if (!Set.of("taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers").contains(type)
                 && !MtrCatalog.COMMANDS.contains(type) && !RideService.DEPOT_COMMANDS.contains(type)) throw new Fault("UNKNOWN_COMMAND", type);
             String dimension = string(request, "dimension");
             Context context = contexts.get(dimension);

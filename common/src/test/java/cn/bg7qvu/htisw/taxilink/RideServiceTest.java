@@ -172,6 +172,67 @@ class RideServiceTest {
         assertTrue(service.command(sim, "taxi.passengers", query).getAsJsonArray("passengers").isEmpty());
         assertEquals("DESTROYED", service.command(sim, "taxi.destroy", query).get("phase").getAsString());
     }
+
+    @Test void fullBoardingTriggersBothCountdownsAndReleasesPickup() throws Exception {
+        exercisePickupDeparture(false);
+    }
+
+    @Test void manualDepartureSkipsBoardingCountdown() throws Exception {
+        exercisePickupDeparture(true);
+    }
+
+    private void exercisePickupDeparture(boolean manual) throws Exception {
+        service.command(sim, "taxi.create", request());
+        var tick = Simulator.class.getDeclaredMethod("tick", long.class);
+        tick.setAccessible(true);
+        JsonObject query = data("orderId", "test-order");
+        Vehicle vehicle = null;
+        for (int i = 0; i < 1000; i++) {
+            tick.invoke(sim, 100L);
+            service.tick(sim, false);
+            JsonObject status = service.command(sim, "taxi.status", query);
+            if (status.has("doorsOpen") && status.get("doorsOpen").getAsBoolean()) {
+                vehicle = siding.getVehicleById(Long.parseLong(status.get("vehicleId").getAsString()));
+                break;
+            }
+        }
+        assertNotNull(vehicle);
+        if (manual) service.command(sim, "taxi.depart", query);
+        else {
+            siding.updateVehicleRidingEntities(vehicle.getId(), new ObjectArrayList<>(List.of(riding(UUID.randomUUID(), 0))));
+            service.tick(sim, false);
+        }
+        for (int i = 0; i < 49; i++) {
+            tick.invoke(sim, 100L);
+            applyClosedDoorOverride(vehicle);
+            service.tick(sim, false);
+            assertFalse(vehicle.isMoving());
+            if (!manual) assertEquals(1, vehicle.vehicleExtraData.getDoorMultiplier());
+        }
+        tick.invoke(sim, 100L);
+        applyClosedDoorOverride(vehicle);
+        service.tick(sim, false);
+        assertEquals(-1, vehicle.vehicleExtraData.getDoorMultiplier());
+        if (!manual) {
+            for (int i = 0; i < 49; i++) {
+                tick.invoke(sim, 100L);
+                applyClosedDoorOverride(vehicle);
+                service.tick(sim, false);
+                assertFalse(vehicle.isMoving());
+            }
+        }
+        for (int i = 0; i < 10 && !vehicle.isMoving(); i++) {
+            tick.invoke(sim, 100L);
+            applyClosedDoorOverride(vehicle);
+            service.tick(sim, false);
+        }
+        assertTrue(vehicle.isMoving());
+    }
+
+    // The standalone Core test does not load the door mixin.
+    private void applyClosedDoorOverride(Vehicle vehicle) {
+        if (DoorControl.blocks(vehicle.vehicleExtraData, true)) MtrAccess.invoke(vehicle.vehicleExtraData, "closeDoors");
+    }
     VehicleRidingEntity riding(UUID uuid, int car) { return new VehicleRidingEntity(uuid, car, 0, 0, 0, false, false, false, false, false, false, false); }
     @Test void groupSizeMustFitAndRouteNameIsReturnedAndPersisted() throws Exception {
         JsonObject invalid = request(); invalid.addProperty("passengerCount", 5);
@@ -268,7 +329,7 @@ class RideServiceTest {
         PathData path = new PathData(sim.rails.iterator().next(), 0, 0, 0, pos(0), pos(10));
         PathData.writePathCache(new ObjectArrayList<>(List.of(path)), sim, TransportMode.TRAIN);
         @SuppressWarnings("unchecked") List<PathData> owned = (List<PathData>) MtrAccess.read(siding, "pathSidingToMainRoute");
-        owned.add(path); MtrAccess.configureRidePaths(siding, 25, pickup.getId());
+        owned.add(path); MtrAccess.configureRidePaths(siding, 25, pickup.getId(), 315000);
         assertTrue(owned.getFirst().getSpeedLimitMetersPerMillisecond() <= 25D / 3600);
         assertEquals(80, path.getSpeedLimitKilometersPerHour());
     }

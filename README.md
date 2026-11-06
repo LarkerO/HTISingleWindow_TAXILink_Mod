@@ -17,8 +17,8 @@ $env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-21'
 
 构建产物：
 
-- `fabric/build/libs/taxilink-fabric-1.21.1-0.3.1.jar`
-- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.3.1.jar`
+- `fabric/build/libs/taxilink-fabric-1.21.1-0.3.2.jar`
+- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.3.2.jar`
 
 选对应加载器 jar 放入服务端 `mods`。不要安装 common jar、sources jar 或同时安装两个版本。服务端另装对应平台的 Architectury 13.0.8 和 MTR 4.1.0-beta.2。根目录提供的 MTR jar 的 NeoForge 元数据声明 Minecraft 1.21.1；Fabric 服务端需要另用 MTR 的 Fabric 发行包。
 
@@ -32,7 +32,7 @@ $env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-21'
 
 - 每个订单独占一个白名单车厂，车厂必须恰有一条指定车厂轨道。并发订单准备多个车厂。指定轨道的现有在途车辆或乘客会导致拒绝；空闲停放车辆会被替换。白名单车厂不得用于普通运营。
 - 后端传 MTR 原始十进制 `long` ID 字符串，指定上、下车站台轨道，轨道网络由服主提前铺设。上下车站台须不同、交通模式相同、停站时间大于零。不创建实体道路或铺轨。
-- 网约车到达上车站后自动开门，预留至少 5 分钟上车时间，之后自动关门发车。该等待应用于订单路径，不改动共享站台或下车站的停站设置。
+- 网约车到上车站自动开门，默认等候最多 300 秒。实到乘客连续达到预约人数 5 秒后自动关门，再等 5 秒并按 MTR 信号条件发车。网页「出发」可跳过上客等待，直接开始关门倒计时。时长分别由 `pickupWaitSeconds`、`fullBoardingCloseDelaySeconds`、`closedDoorDepartureDelaySeconds` 配置，单位为秒。
 - 模组创建临时隐藏路线，调用 MTR 寻路完成车厂→上车点→下车点→车厂的连接，然后安排单次出发。返回 `GENERATING` 仅表示受理，`ride.dispatched` 才是已观察到车辆出发。
 - 车辆型号、尺寸、转向架位置和容量由后端传入，须与 MTR 车辆资源匹配。模组只验证几何范围与车厂长度，不验证客户端资源是否存在。
 - 每单得到 `TX-` 加 UUID 的唯一业务车牌，作为路线号和 WebSocket 标识；路线名称默认 `TAXILink <车牌>`，可用可选 `routeName` 自定义。返回 `routeName/routeNumber/routeHidden`。未添加自定义可视车牌模型。

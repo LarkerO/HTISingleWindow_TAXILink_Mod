@@ -90,7 +90,7 @@ summary { cursor: pointer; }
     <label>查询订单号<input id="orderId" list="orders" maxlength="256"><datalist id="orders"></datalist></label>
     <div class="actions">
       <button id="listOrders">获取订单列表</button><button id="status" class="primary">查询状态</button><button id="passengers">查看乘客</button>
-      <button id="openDoors">开门</button><button id="closeDoors">关门</button><button id="destroy" class="danger">销毁订单车辆</button>
+      <button id="openDoors">开门</button><button id="closeDoors">关门</button><button id="depart" class="primary">出发</button><button id="destroy" class="danger">销毁订单车辆</button>
     </div>
     <p id="orderSummary" role="status" class="muted">可从订单列表选择，也可直接输入订单号。</p>
     <ul id="riders" aria-label="在车乘客"></ul>
@@ -363,6 +363,7 @@ function showOrder(data, dimension) {
     data.etaPickupSeconds != null ? '预计到上车点 ' + data.etaPickupSeconds + ' 秒' : '',
     data.etaDropoffSeconds != null ? '预计到下车点 ' + data.etaDropoffSeconds + ' 秒' : '',
     data.doorsOpen != null ? (data.doorsOpen ? '开门' : '关门') : '',
+    data.departureDelaySeconds != null ? '已安排出发，关门后等待 ' + data.departureDelaySeconds + ' 秒' : '',
     data.doorTarget ? '车门指令 ' + (data.doorTarget === 'open' ? '开门' : '关门') : '',
     data.error
   ].filter(Boolean).join(' · ');
@@ -424,6 +425,7 @@ $('status').onclick = orderAction('taxi.status');
 $('passengers').onclick = orderAction('taxi.passengers');
 $('openDoors').onclick = orderAction('taxi.doors', { state: 'open' });
 $('closeDoors').onclick = orderAction('taxi.doors', { state: 'closed' });
+$('depart').onclick = orderAction('taxi.depart');
 $('destroy').onclick = orderAction('taxi.destroy');
 for (const button of $('catalogButtons').querySelectorAll('button')) {
   button.onclick = action(async () => {

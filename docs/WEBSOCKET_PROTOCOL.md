@@ -75,7 +75,7 @@ PHP 将该已鉴权连接绑定订阅频道，可回 `{"type":"subscribed"}`；�
 
 `passengerCount` 为预约人数，默认 1，必须为正整数且不超过所有车辆 `capacity` 之和，否则返回 `INSUFFICIENT_CAPACITY`。同一订单可同时上多名玩家，共用上、下车点；不需要为每个人新建列车。概要返回 `capacity/requestedPassengerCount`，状态/乘客查询返回 `onboardCount/remainingCapacity/overCapacity` 及所有 `passengers`。预约人数不保证实际乘客身份或严格限制登车，模组不主动拦截其他玩家；不同目的地拼单仍不支持。
 
-从 0.3.1 起，网约车到达上车站会自动开门并预留至少 5 分钟上车时间。下车站沿用 MTR 原有停站时间。
+网约车在上车站自动开门。默认等待上限 300 秒，达到预约人数并维持 5 秒后提前关门，再等 5 秒交由 MTR 按信号发车。可在上车站调用 `taxi.depart`（params 为 `orderId`）直接关门并开始出发倒计时。下车站沿用 MTR 停站时间。
 
 成功响应：
 

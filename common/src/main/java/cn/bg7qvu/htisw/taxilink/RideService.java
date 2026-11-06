@@ -32,6 +32,8 @@ public final class RideService {
         public long depotId, sidingId, routeId, vehicleId, createdAt, deadline;
         public boolean departed;
         public JsonObject params, depotBackup, sidingBackup;
+        private transient long pickupSince = -1, pickupDoorsOpenedAt = -1, fullSince = -1, departAt = -1;
+        private transient boolean pickupReleased, pickupPassed;
         boolean terminal() { return Set.of("COMPLETED", "DESTROYED", "FAILED", "RECOVERED").contains(phase); }
     }
     private Path file(Ride ride) { return directory.resolve(UUID.nameUUIDFromBytes(ride.orderId.getBytes(StandardCharsets.UTF_8)) + ".json"); }
@@ -88,6 +90,13 @@ public final class RideService {
         return switch (type) {
             case "taxi.status" -> status(sim, ride);
             case "taxi.passengers" -> passengerStatus(sim, ride);
+            case "taxi.depart" -> {
+                Vehicle v = vehicle(sim, ride);
+                if (!ride.phase.equals("ACTIVE") || pickupStop(ride, v) == null || ride.pickupReleased)
+                    throw new Fault("NOT_AT_PICKUP", "Departure requires a vehicle stopped at the pickup platform");
+                scheduleDeparture(ride, v, sim.getCurrentMillis());
+                yield data("orderId", ride.orderId, "departureDelaySeconds", config.closedDoorDepartureDelaySeconds);
+            }
             case "taxi.destroy" -> {
                 if (!ride.terminal()) {
                     if (!passengers(sim, ride).isEmpty()) throw new Fault("VEHICLE_OCCUPIED", "Passengers must disembark before destruction");
@@ -101,12 +110,62 @@ public final class RideService {
                 Vehicle vehicle = vehicle(sim, ride);
                 if (vehicle == null || ride.terminal()) throw new Fault("VEHICLE_NOT_READY", "Vehicle is not active");
                 if (vehicle.isMoving()) throw new Fault("VEHICLE_MOVING", "Door commands require a stopped vehicle");
+                if (state.equals("open") && pickupStop(ride, vehicle) != null) {
+                    if (ride.pickupReleased) throw new Fault("DEPARTURE_IN_PROGRESS", "Pickup departure has already been released");
+                    ride.departAt = ride.fullSince = -1;
+                }
                 DoorControl.set(vehicle.vehicleExtraData, state.equals("open"));
                 MtrAccess.invoke(vehicle.vehicleExtraData, state.equals("open") ? "openDoors" : "closeDoors");
                 yield data("orderId", ride.orderId, "doorTarget", state, "control", "held_until_next_command");
             }
             default -> throw new Fault("UNKNOWN_COMMAND", type);
         };
+    }
+    private PathData pickupStop(Ride ride, Vehicle v) {
+        if (v == null || ride.pickupPassed || !v.getIsOnRoute() || v.isMoving()) return null;
+        long pickupId = id(ride.params, "pickupPlatformId");
+        double progress = ((Number) MtrAccess.read(v, "railProgress")).doubleValue();
+        for (PathData path : v.vehicleExtraData.immutablePath) {
+            if (path.getSavedRailBaseId() == pickupId && path.getDwellTime() > 0)
+                return Math.abs(progress - path.getEndDistance()) < 0.000001 ? path : null;
+        }
+        return null;
+    }
+
+    private void scheduleDeparture(Ride ride, Vehicle v, long now) {
+        if (ride.departAt >= 0) return;
+        DoorControl.set(v.vehicleExtraData, false);
+        MtrAccess.invoke(v.vehicleExtraData, "closeDoors");
+        ride.departAt = now + config.closedDoorDepartureDelaySeconds * 1000L;
+    }
+
+    private void tickPickup(Simulator sim, Ride ride, Vehicle v) {
+        if (ride.pickupPassed) return;
+        PathData stop = pickupStop(ride, v);
+        if (stop == null) {
+            if (ride.pickupSince >= 0 || ride.departAt >= 0) {
+                ride.pickupPassed = true;
+                DoorControl.remove(v.vehicleExtraData);
+            }
+            return;
+        }
+        long now = sim.getCurrentMillis();
+        if (ride.pickupSince < 0) ride.pickupSince = now;
+        if (ride.pickupDoorsOpenedAt < 0 && v.vehicleExtraData.getDoorMultiplier() > 0) ride.pickupDoorsOpenedAt = now;
+        if (ride.departAt < 0) {
+            int target = ride.params.has("passengerCount") ? ride.params.get("passengerCount").getAsInt() : 1;
+            long onboard = passengers(sim, ride).stream().filter(p -> !p.get("driver").getAsBoolean()).count();
+            if (onboard < target) ride.fullSince = -1;
+            else if (ride.fullSince < 0) ride.fullSince = now;
+            boolean full = ride.fullSince >= 0 && now - ride.fullSince >= config.fullBoardingCloseDelaySeconds * 1000L;
+            long opening = ride.pickupDoorsOpenedAt >= 0 ? ride.pickupDoorsOpenedAt : ride.pickupSince + 1_000L;
+            boolean timedOut = now - opening >= config.pickupWaitSeconds * 1000L + Vehicle.DOOR_MOVE_TIME;
+            if (full || timedOut) scheduleDeparture(ride, v, now);
+        }
+        if (ride.departAt >= 0 && now >= ride.departAt && !ride.pickupReleased) {
+            MtrAccess.releasePickup(v, stop);
+            ride.pickupReleased = true;
+        }
     }
     private JsonObject manageDepots(Simulator sim, String type, JsonObject params) {
         DepotAllowlist allowlist = config.depotAllowlist;
@@ -216,7 +275,8 @@ public final class RideService {
                         throw new Fault("ROUTE_GENERATION_FAILED", generation.name());
                     if (generation == Depot.GeneratedStatus.SUCCESSFUL) {
                         siding.clearVehicles();
-                        MtrAccess.configureRidePaths(siding, ride.params.get("maxSpeedKmh").getAsDouble(), id(ride.params, "pickupPlatformId"));
+                        long dwell = (config.pickupWaitSeconds + config.closedDoorDepartureDelaySeconds + 10L) * 1000;
+                        MtrAccess.configureRidePaths(siding, ride.params.get("maxSpeedKmh").getAsDouble(), id(ride.params, "pickupPlatformId"), dwell);
                         siding.startGeneratingDepartures();
                         long departure = sim.getCurrentMillis() + 1000;
                         depot.getRealTimeDepartures().add(departure);
@@ -235,7 +295,7 @@ public final class RideService {
                     if (v == null || !v.getIsOnRoute()) {
                         if (!passengers(sim, ride).isEmpty()) { ride.phase = "AWAITING_DISEMBARK"; save(ride); emit(ride, "ride.awaiting_disembark"); }
                         else complete(sim, ride);
-                    }
+                    } else tickPickup(sim, ride, v);
                 }
                 if (ride.phase.equals("AWAITING_DISEMBARK") && passengers(sim, ride).isEmpty()) complete(sim, ride);
                 if (telemetry && !ride.terminal()) events.accept(data("type", "taxi.telemetry", "data", status(sim, ride)));

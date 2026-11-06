@@ -9,9 +9,6 @@ import java.util.*;
 
 /** Version-locked private API boundary for MTR 4.1.0-beta.2. Never bundle MTR. */
 public final class MtrAccess {
-    private static final long PICKUP_BOARDING_MILLIS = 300_000;
-    // MTR waits 1s before opening, animates the doors, then closes 4.2s before departure.
-    private static final long PICKUP_DWELL_MILLIS = PICKUP_BOARDING_MILLIS + 2 * (Vehicle.DOOR_MOVE_TIME + 1_000L);
     private MtrAccess() {}
     public static Object read(Object target, String field) {
         try { return field(target.getClass(), field).get(target); }
@@ -46,13 +43,21 @@ public final class MtrAccess {
         return depotsPath.toAbsolutePath().getParent().resolve("taxilink-state");
     }
     /** Keep speed and pickup dwell changes on this order's path, away from shared rails and platforms. */
-    public static void configureRidePaths(Siding siding, double speedKmh, long pickupPlatformId) {
+    public static void configureRidePaths(Siding siding, double speedKmh, long pickupPlatformId, long pickupDwellMillis) {
         double cap = speedKmh / 3600D;
         for (String name : List.of("pathSidingToMainRoute", "pathMainRoute", "pathMainRouteToSiding")) {
             @SuppressWarnings("unchecked") List<PathData> paths = (List<PathData>) read(siding, name);
-            paths.replaceAll(p -> p.getSavedRailBaseId() == pickupPlatformId && p.getDwellTime() > 0 && p.getDwellTime() < PICKUP_DWELL_MILLIS
-                ? new LimitedPath(p, cap, PICKUP_DWELL_MILLIS)
+            paths.replaceAll(p -> p.getSavedRailBaseId() == pickupPlatformId && p.getDwellTime() > 0 && p.getDwellTime() < pickupDwellMillis
+                ? new LimitedPath(p, cap, pickupDwellMillis)
                 : new LimitedPath(p, cap));
+        }
+    }
+
+    public static void releasePickup(Vehicle vehicle, PathData pickup) {
+        try {
+            field(Vehicle.class, "elapsedDwellTime").setLong(vehicle, pickup.getDwellTime());
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Cannot release MTR pickup dwell", e);
         }
     }
     private static final class LimitedPath extends PathData {

@@ -11,7 +11,7 @@ final class TaxilinkProtocol
 
     public function command(string $type, array $params = [], ?string $requestId = null): string
     {
-        $allowed = ['taxi.create', 'taxi.status', 'taxi.list', 'taxi.passengers', 'taxi.doors', 'taxi.destroy',
+        $allowed = ['taxi.create', 'taxi.status', 'taxi.list', 'taxi.passengers', 'taxi.doors', 'taxi.depart', 'taxi.destroy',
             'mtr.dimensions', 'mtr.depots', 'mtr.sidings', 'mtr.routes', 'mtr.stations', 'mtr.platforms',
             'taxi.depots.list', 'taxi.depots.add', 'taxi.depots.remove', 'taxi.depots.reload'];
         if (!in_array($type, $allowed, true)) {
@@ -40,7 +40,7 @@ final class TaxilinkProtocol
 
     public function doors(string $orderId, bool $open): string
     {
-        return $this->command('taxi.doors', ['orderId' => $orderId, 'state' => $open ? 'open' : 'closed']);
+        return $this->command('taxi.doors', 'taxi.depart', ['orderId' => $orderId, 'state' => $open ? 'open' : 'closed']);
     }
 
     public function destroy(string $orderId): string

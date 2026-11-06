@@ -6,6 +6,9 @@
   "allowInsecureLocalhost": false,
   "telemetrySeconds": 2,
   "generationTimeoutSeconds": 60,
+  "pickupWaitSeconds": 300,
+  "fullBoardingCloseDelaySeconds": 5,
+  "closedDoorDepartureDelaySeconds": 5,
   "maxActiveRides": 64,
   "maxMessageBytes": 65536,
   "maxPendingCommands": 128
