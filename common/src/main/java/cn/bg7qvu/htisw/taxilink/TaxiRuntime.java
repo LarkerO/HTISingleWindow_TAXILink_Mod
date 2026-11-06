@@ -3,6 +3,7 @@ package cn.bg7qvu.htisw.taxilink;
 import cn.bg7qvu.htisw.taxilink.mtr.MtrAccess;
 import org.mtr.core.simulation.Simulator;
 import org.mtr.libraries.com.google.gson.JsonObject;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
@@ -27,6 +28,7 @@ public final class TaxiRuntime implements AutoCloseable {
         Context(Simulator simulator, RideService rides) { this.simulator = simulator; this.rides = rides; }
     }
     public TaxiRuntime(Config config, Path state) { this.config = config; this.state = state; link = new WebSocketLink(config, this::receive); }
+    int reloadDepots() throws IOException { return config.depotAllowlist.reload(); }
     public void start() throws ReflectiveOperationException {
         MtrAccess.verify();
         timer.scheduleWithFixedDelay(this::pulse, 0, 250, TimeUnit.MILLISECONDS);
@@ -81,7 +83,8 @@ public final class TaxiRuntime implements AutoCloseable {
                 link.send(data("type", "response", "requestId", request.get("requestId").getAsString(), "ok", true, "data", data("dimensions", dimensions)));
                 return;
             }
-            if (!Set.of("taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.destroy", "taxi.passengers").contains(type) && !MtrCatalog.COMMANDS.contains(type)) throw new Fault("UNKNOWN_COMMAND", type);
+            if (!Set.of("taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.destroy", "taxi.passengers").contains(type)
+                && !MtrCatalog.COMMANDS.contains(type) && !RideService.DEPOT_COMMANDS.contains(type)) throw new Fault("UNKNOWN_COMMAND", type);
             String dimension = string(request, "dimension");
             Context context = contexts.get(dimension);
             if (context == null) throw new Fault("DIMENSION_NOT_READY", "Unknown or uninitialized MTR dimension");

@@ -6,9 +6,10 @@ function check(bool $condition, string $message): void {
     if (!$condition) throw new RuntimeException($message);
 }
 $protocol = new TaxilinkProtocol('test-server');
-foreach (['mtr.dimensions', 'mtr.depots', 'mtr.sidings', 'mtr.routes', 'mtr.stations', 'mtr.platforms'] as $type) {
+foreach (['mtr.dimensions', 'mtr.depots', 'mtr.sidings', 'mtr.routes', 'mtr.stations', 'mtr.platforms',
+    'taxi.depots.list', 'taxi.depots.add', 'taxi.depots.remove', 'taxi.depots.reload'] as $type) {
     $message = json_decode($protocol->command($type), true, 64, JSON_THROW_ON_ERROR);
-    check($message['type'] === $type && $message['v'] === 1, 'Catalog command encoding');
+    check($message['type'] === $type && $message['v'] === 1, 'Command encoding');
 }
 $wire = $protocol->command('taxi.create', ['depotId' => '-9223372036854775808', 'passengerCount' => 3, 'routeName' => '三人同行']);
 check(str_contains($wire, '三人同行'), 'Unicode name preservation');

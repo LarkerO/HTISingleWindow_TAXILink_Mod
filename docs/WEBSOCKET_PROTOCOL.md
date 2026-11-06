@@ -35,6 +35,8 @@ PHP 将该已鉴权连接绑定订阅频道，可回 `{"type":"subscribed"}`；�
 
 ## 创建订单
 
+0.3.0 起，网关可以通过 `taxi.depots.list`、`taxi.depots.add`、`taxi.depots.remove` 和 `taxi.depots.reload` 管理游戏实例的 `config/taxilink-depots.json`。所有命令使用标准信封和维度字段。add/remove 的 params 传 `depotId` 字符串，list/reload 传空对象。成功 data 返回当前维度的 `dimension` 和 `depotIds`。添加时校验车厂存在且只有一条所属停车轨道，移除允许清理已从地图删除的车厂 ID。文件保存或读取失败返回 `ALLOWLIST_IO_ERROR`，内存里的有效白名单保留。
+
 ```json
 {
   "v": 1,

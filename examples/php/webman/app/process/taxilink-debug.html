@@ -49,6 +49,12 @@ summary { cursor: pointer; }
 </section>
 <p id="notice" role="status" aria-live="polite"></p>
 <main class="grid">
+  <section class="wide">
+    <h2>车厂白名单</h2>
+    <p class="muted">仅授权专用于网约车、且只有一条停车轨道的车厂。移除授权后，该车厂不能接收新订单。</p>
+    <div class="actions"><button id="loadWhitelist">查看车厂白名单</button><button id="reloadWhitelist">重新读取白名单文件</button></div>
+    <div class="scroll"><table><thead><tr><th>车厂</th><th>车厂 ID</th><th>停车轨道</th><th>授权</th></tr></thead><tbody id="whitelistRows"></tbody></table></div>
+  </section>
   <section>
     <h2>测试发单</h2>
     <p class="muted">可粘贴 ID，或加载地图数据后从建议中选取。发单受理后，可在右侧查询寻路和发车状态。</p>
@@ -265,9 +271,52 @@ $('loadMap').onclick = action(async () => {
 function clearSidings() { sidings = []; $('sidings').replaceChildren(); }
 $('dimension').addEventListener('input', () => {
   clearSidings();
-  for (const id of ['depots', 'platforms', 'orders', 'orderRows', 'riders']) $(id).replaceChildren();
+  for (const id of ['depots', 'platforms', 'orders', 'orderRows', 'riders', 'whitelistRows']) $(id).replaceChildren();
   for (const id of ['depotId', 'sidingId', 'pickupPlatformId', 'dropoffPlatformId', 'orderId']) $(id).value = '';
   $('orderSummary').textContent = '维度已更改，请重新查询订单。';
+});
+
+async function showWhitelist(dimension) {
+  const [depots, { data }] = await Promise.all([
+    catalog('depots', {}, dimension),
+    command('taxi.depots.list', {}, dimension)
+  ]);
+  if (dimension !== value('dimension')) return '维度已更改，请重新加载白名单';
+  const allowed = new Set(data.depotIds);
+  const visible = new Set(depots.map(depot => depot.id));
+  const missing = data.depotIds.filter(id => !visible.has(id)).map(id => ({ id, name: '地图中找不到此车厂' }));
+  options('depots', depots, depot => depot.name + (allowed.has(depot.id) ? ' · 已授权' : ' · 未授权'));
+  $('whitelistRows').replaceChildren(...[...depots, ...missing].map(depot => {
+    const row = document.createElement('tr');
+    row.insertCell().textContent = depot.name;
+    row.insertCell().textContent = depot.id;
+    row.insertCell().textContent = depot.sidingCount ?? '—';
+    const cell = row.insertCell();
+    const authorized = allowed.has(depot.id);
+    if (!authorized && depot.sidingCount !== 1) {
+      cell.textContent = '需要一条停车轨道';
+      return row;
+    }
+    const button = document.createElement('button');
+    button.textContent = authorized ? '移除授权' : '加入白名单';
+    button.onclick = action(async () => {
+      if (dimension !== value('dimension')) throw new Error('维度已更改，请重新加载白名单。');
+      await command(authorized ? 'taxi.depots.remove' : 'taxi.depots.add', { depotId: depot.id }, dimension);
+      button.disabled = true;
+      button.textContent = authorized ? '已移除' : '已加入';
+      await showWhitelist(dimension);
+      return authorized ? '已移除车厂授权' : '已加入白名单，可以测试发单';
+    });
+    cell.append(button);
+    return row;
+  }));
+  return '当前维度已授权 ' + allowed.size + ' 个车厂';
+}
+$('loadWhitelist').onclick = action(() => showWhitelist(value('dimension')));
+$('reloadWhitelist').onclick = action(async () => {
+  const dimension = value('dimension');
+  await command('taxi.depots.reload', {}, dimension);
+  return showWhitelist(dimension);
 });
 $('depotId').addEventListener('input', () => {
   clearSidings();

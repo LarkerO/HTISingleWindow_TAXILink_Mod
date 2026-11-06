@@ -8,8 +8,5 @@
   "generationTimeoutSeconds": 60,
   "maxActiveRides": 64,
   "maxMessageBytes": 65536,
-  "maxPendingCommands": 128,
-  "allowedDepots": {
-    "minecraft/overworld": ["123456789012345678"]
-  }
+  "maxPendingCommands": 128
 }

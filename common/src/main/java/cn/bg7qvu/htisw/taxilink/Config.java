@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.*;
 import java.util.*;
+import org.mtr.libraries.com.google.gson.JsonObject;
 
 public final class Config {
     public boolean enabled = false;
@@ -20,6 +21,7 @@ public final class Config {
     /** dimension (MTR namespace/path) -> explicitly reserved depot IDs */
     public Map<String, List<String>> allowedDepots = new LinkedHashMap<>();
     private transient Path configDirectory;
+    transient DepotAllowlist depotAllowlist;
 
     public String token() {
         if (tokenFile != null && !tokenFile.isBlank()) {
@@ -42,7 +44,13 @@ public final class Config {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("Set environment variable " + tokenEnvironment);
         return value;
     }
-    public boolean allows(String dimension, long depot) { return allowedDepots.getOrDefault(dimension, List.of()).contains(Long.toString(depot)); }
+    List<String> allowedDepotIds(String dimension) {
+        return depotAllowlist == null ? allowedDepots.getOrDefault(dimension, List.of()) : depotAllowlist.ids(dimension);
+    }
+
+    public boolean allows(String dimension, long depot) {
+        return allowedDepotIds(dimension).contains(Long.toString(depot));
+    }
     public void validate() {
         URI uri = URI.create(endpoint);
         boolean local = List.of("localhost", "127.0.0.1", "::1", "[::1]").contains(uri.getHost());
@@ -53,15 +61,12 @@ public final class Config {
         token();
     }
     public static Config load(Path path) throws Exception {
-        if (!Files.exists(path)) {
-            Config config = new Config();
-            config.allowedDepots.put("minecraft/overworld", new ArrayList<>());
-            Json.write(path, Json.GSON.toJsonTree(config).getAsJsonObject());
-            return config;
-        }
-        Config config = Json.GSON.fromJson(Files.readString(path), Config.class);
-        if (config == null || config.allowedDepots == null) throw new IllegalArgumentException("Invalid config");
+        boolean fresh = Files.notExists(path);
+        JsonObject root = fresh ? Json.GSON.toJsonTree(new Config()).getAsJsonObject() : Json.object(Files.readString(path));
+        Config config = Json.GSON.fromJson(root, Config.class);
         config.configDirectory = path.toAbsolutePath().getParent();
+        config.depotAllowlist = new DepotAllowlist(config.configDirectory.resolve(DepotAllowlist.FILE_NAME), config.allowedDepots);
+        if (root.remove("allowedDepots") != null || fresh) Json.write(path, root);
         if (config.enabled) config.validate();
         return config;
     }

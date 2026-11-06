@@ -267,6 +267,28 @@ class RideServiceTest {
     }
     @Test void apiBoundaryMatchesActualBetaJar() throws Exception { MtrAccess.verify(); }
 
+    @Test void depotAllowlistMigratesAndSupportsLiveWebEditsAndReload() throws Exception {
+        var configPath = temp.resolve("config/taxilink.json");
+        var listPath = configPath.resolveSibling("taxilink-depots.json");
+        String depotId = Long.toString(depot.getId());
+        Json.write(configPath, data("allowedDepots", Map.of(sim.dimension, List.of(depotId)), "serverId", "test-server"));
+        Config migrated = Config.load(configPath);
+        assertFalse(Json.object(java.nio.file.Files.readString(configPath)).has("allowedDepots"));
+        assertTrue(migrated.allows(sim.dimension, depot.getId()));
+        RideService web = new RideService(migrated, temp.resolve("allowlist-test"), sim.dimension, ignored -> {});
+        web.command(sim, "taxi.depots.remove", data("depotId", depotId));
+        assertFalse(migrated.allows(sim.dimension, depot.getId()));
+        assertFalse(Config.load(configPath).allows(sim.dimension, depot.getId()));
+        web.command(sim, "taxi.depots.add", data("depotId", depotId));
+        assertTrue(Config.load(configPath).allows(sim.dimension, depot.getId()));
+        java.nio.file.Files.writeString(listPath, "{ invalid json");
+        assertEquals("ALLOWLIST_IO_ERROR", assertThrows(Fault.class, () -> web.command(sim, "taxi.depots.reload", data())).code);
+        assertTrue(migrated.allows(sim.dimension, depot.getId()));
+        Json.write(listPath, data(sim.dimension, List.of()));
+        assertTrue(web.command(sim, "taxi.depots.reload", data()).getAsJsonArray("depotIds").isEmpty());
+        assertFalse(migrated.allows(sim.dimension, depot.getId()));
+    }
+
     @Test void integratedWorldsWithTheSameDimensionUseSeparateJournals() {
         Simulator other = new Simulator(sim.dimension, new String[]{sim.dimension}, temp.resolve("other-world/mtr"), false);
         assertEquals(temp.resolve("mtr/minecraft/overworld/taxilink-state"), MtrAccess.integratedStateRoot(sim));

@@ -8,6 +8,7 @@ import org.mtr.core.tool.Utilities;
 import org.mtr.libraries.com.google.gson.*;
 import org.mtr.libraries.it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.function.Consumer;
@@ -15,6 +16,7 @@ import static cn.bg7qvu.htisw.taxilink.Json.*;
 
 /** All methods, including journal recovery, execute exclusively on the owning MTR simulator. */
 public final class RideService {
+    static final Set<String> DEPOT_COMMANDS = Set.of("taxi.depots.list", "taxi.depots.add", "taxi.depots.remove", "taxi.depots.reload");
     private final Config config;
     private final Path directory;
     private final Consumer<JsonObject> events;
@@ -72,6 +74,7 @@ public final class RideService {
         recovered = true;
     }
     public JsonObject command(Simulator sim, String type, JsonObject p) {
+        if (DEPOT_COMMANDS.contains(type)) return manageDepots(sim, type, p);
         if (MtrCatalog.COMMANDS.contains(type)) return MtrCatalog.query(sim, type, p, config,
             routeId -> rides.values().stream().filter(r -> r.routeId == routeId).map(r -> r.orderId).findFirst().orElse(null));
         if (type.equals("taxi.create")) return create(sim, p);
@@ -105,6 +108,30 @@ public final class RideService {
             default -> throw new Fault("UNKNOWN_COMMAND", type);
         };
     }
+    private JsonObject manageDepots(Simulator sim, String type, JsonObject params) {
+        DepotAllowlist allowlist = config.depotAllowlist;
+        if (allowlist == null) throw new Fault("ALLOWLIST_UNAVAILABLE", "Depot allowlist was not loaded");
+        try {
+            if (type.equals("taxi.depots.reload")) {
+                allowlist.reload();
+            } else if (!type.equals("taxi.depots.list")) {
+                long depotId = id(params, "depotId");
+                boolean add = type.equals("taxi.depots.add");
+                if (add) {
+                    Depot depot = sim.depotIdMap.get(depotId);
+                    if (depot == null) throw new Fault("MTR_ID_NOT_FOUND", "Depot does not exist in this dimension");
+                    if (depot.savedRails.size() != 1 || depot.savedRails.iterator().next().area != depot) {
+                        throw new Fault("DEDICATED_DEPOT_REQUIRED", "Use a dedicated depot with exactly one siding");
+                    }
+                }
+                allowlist.set(sim.dimension, depotId, add);
+            }
+        } catch (IOException e) {
+            TaxiLink.LOG.log(System.Logger.Level.ERROR, "Cannot update TAXILink depot allowlist", e);
+            throw new Fault("ALLOWLIST_IO_ERROR", "Check config/taxilink-depots.json and the server log");
+        }
+        return data("dimension", sim.dimension, "depotIds", allowlist.ids(sim.dimension));
+    }
     private JsonObject create(Simulator sim, JsonObject p) {
         String orderId = string(p, "orderId");
         Ride existing = rides.get(orderId);
@@ -117,7 +144,7 @@ public final class RideService {
         double speed = number(p, "maxSpeedKmh", 1, 160);
         double acceleration = number(p, "accelerationMps2", 0.1, 4);
         double deceleration = number(p, "decelerationMps2", 0.1, 4);
-        if (!config.allows(sim.dimension, depotId)) throw new Fault("DEPOT_NOT_ALLOWED", "Depot is not explicitly reserved in config");
+        if (!config.allows(sim.dimension, depotId)) throw new Fault("DEPOT_NOT_ALLOWED", "Add the dedicated depot to the TAXILink allowlist first");
         if (rides.values().stream().filter(r -> !r.terminal()).count() >= config.maxActiveRides) throw new Fault("CAPACITY_EXCEEDED", "Dimension active ride limit reached");
         if (rides.values().stream().anyMatch(r -> !r.terminal() && r.depotId == depotId)) throw new Fault("DEPOT_BUSY", "Depot is assigned to another order");
         Depot depot = sim.depotIdMap.get(depotId);

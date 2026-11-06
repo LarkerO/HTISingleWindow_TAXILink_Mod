@@ -3,6 +3,7 @@ package cn.bg7qvu.htisw.taxilink;
 import java.lang.reflect.*;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /** No Minecraft members are referenced: identical common bytecode on Mojmap NeoForge and Fabric intermediary. */
 public final class TaxiLink {
@@ -28,11 +29,15 @@ public final class TaxiLink {
                 } catch (Exception e) { LOG.log(System.Logger.Level.ERROR, "TAXILink startup failed", e); }
             });
             lifecycle("SERVER_STOPPING", () -> { if (runtime != null) { runtime.close(); runtime = null; } });
+            registerEvent("CommandRegistrationEvent", "EVENT", args -> DepotReloadCommand.register(args[0], () -> runtime));
         } catch (ReflectiveOperationException e) { throw new IllegalStateException("Architectury 13.0.8 lifecycle API required", e); }
     }
-    @SuppressWarnings("unchecked")
     private static void lifecycle(String name, Runnable action) throws ReflectiveOperationException {
-        Class<?> events = Class.forName("dev.architectury.event.events.common.LifecycleEvent");
+        registerEvent("LifecycleEvent", name, args -> action.run());
+    }
+
+    private static void registerEvent(String eventClass, String name, Consumer<Object[]> action) throws ReflectiveOperationException {
+        Class<?> events = Class.forName("dev.architectury.event.events.common." + eventClass);
         Field field = events.getField(name);
         Class<?> listener = (Class<?>) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
         Object proxy = Proxy.newProxyInstance(listener.getClassLoader(), new Class<?>[]{listener}, (self, method, args) -> {
@@ -41,7 +46,7 @@ public final class TaxiLink {
                 case "equals" -> self == args[0];
                 default -> "TAXILink " + name;
             };
-            action.run(); return null;
+            action.accept(args); return null;
         });
         Class.forName("dev.architectury.event.Event").getMethod("register", Object.class).invoke(field.get(null), proxy);
     }

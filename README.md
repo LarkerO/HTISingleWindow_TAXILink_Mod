@@ -17,14 +17,16 @@ $env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-21'
 
 构建产物：
 
-- `fabric/build/libs/taxilink-fabric-1.21.1-0.2.3.jar`
-- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.2.3.jar`
+- `fabric/build/libs/taxilink-fabric-1.21.1-0.3.0.jar`
+- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.3.0.jar`
 
 选对应加载器 jar 放入服务端 `mods`。不要安装 common jar、sources jar 或同时安装两个版本。服务端另装对应平台的 Architectury 13.0.8 和 MTR 4.1.0-beta.2。根目录提供的 MTR jar 的 NeoForge 元数据声明 Minecraft 1.21.1；Fabric 服务端需要另用 MTR 的 Fabric 发行包。
 
 独立服务器首次启动、或游戏实例首次打开单机存档时，会在对应实例的 `config` 目录生成 `taxilink.json`，默认关闭。配置中的 `tokenFile` 支持绝对路径，也支持相对于 `taxilink.json` 所在目录的路径。例如设置 `"tokenFile": "taxilink.token"`，把与 PHP 网关一致的模组令牌放进同目录的 `taxilink.token`，文件只写一行令牌。也可以直接指向 PHP 网关生成的 `.env.taxilink-mod`。配置了文件时优先读文件，旧配置可继续使用 `tokenEnvironment`。
 
-编辑 WebSocket 地址、服务端标识和专用车厂白名单后，单机重新打开存档即可读取配置，独立服务器重启后生效。单机订单日志跟随存档，保存在各维度的 MTR 数据目录下。参考 `config.example.json`。
+编辑 WebSocket 地址和服务端标识后，单机重新打开存档即可读取配置，独立服务器重启后生效。单机订单日志跟随存档，保存在各维度的 MTR 数据目录下。参考 `config.example.json`。
+
+车厂白名单单独保存在游戏实例的 `config/taxilink-depots.json`，格式如 `{"minecraft/overworld":["3723654952439211127"]}`。网页「车厂白名单」可按维度增删授权，保存后即时生效。手动编辑文件后，游戏管理员可执行 `/taxilink reload-depots`，也可在网页点「重新读取白名单文件」。首次升级会迁移旧配置的 `allowedDepots`。移除授权只影响新订单。
 
 ## 调度约束
 
