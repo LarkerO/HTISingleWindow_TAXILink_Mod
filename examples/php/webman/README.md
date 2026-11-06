@@ -43,6 +43,8 @@ Minecraft 的 `config/taxilink.json` 将 endpoint 设为上面的 ws 地址，�
 
 发单超时时，先用原订单号查询。重试同一笔订单时保留原订单号和参数。
 
+单机调试时，如果页面显示模组已连接但查询出现 `MOD_RESPONSE_TIMEOUT`，先回游戏退出暂停菜单，按 `F3 + P` 关闭失焦自动暂停，再切回网页重试。WebSocket 在线时，暂停的单机世界仍可能暂时停止处理 MTR 模拟队列。
+
 ## HTTP 调试
 
 所有接口都要求 `Authorization: Bearer <TAXILINK_DEBUG_TOKEN>`。

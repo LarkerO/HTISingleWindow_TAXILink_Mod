@@ -115,25 +115,34 @@ function notice(message, error = false) {
   $('notice').textContent = message;
   $('notice').className = error ? 'error' : '';
 }
-async function api(path, body) {
+async function api(path, body, timeoutMs = 18000) {
   if (!token) throw new Error('请先连接调试网关。');
   const headers = { Authorization: 'Bearer ' + token };
-  const options = { headers, cache: 'no-store' };
+  const options = { headers, cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) };
   if (body) {
     headers['Content-Type'] = 'application/json';
     options.method = 'POST';
     options.body = JSON.stringify(body);
   }
-  const response = await fetch(path, options);
-  const result = await response.json();
+  let response, result;
+  try {
+    response = await fetch(path, options);
+    result = await response.json();
+  } catch (error) {
+    if (error.name === 'TimeoutError') throw new Error('等待网关响应超时，请检查游戏是否仍在运行。');
+    throw error;
+  }
   if (!response.ok || result.ok === false) {
     const error = result.error;
+    if (error === 'MOD_RESPONSE_TIMEOUT') {
+      throw Object.assign(new Error('模组响应超时。单机请退出暂停菜单，按 F3 + P 关闭失焦自动暂停后重试。发单超时请先用原订单号查询。'), { result });
+    }
     throw Object.assign(new Error(typeof error === 'string' ? error + (result.message ? ' · ' + result.message : '') : [error?.code, error?.message].filter(Boolean).join(' · ') || 'HTTP ' + response.status), { result });
   }
   return result;
 }
-function command(type, params = {}, dimension = value('dimension')) {
-  return api('/command', { type, params, dimension });
+function command(type, params = {}, dimension = value('dimension'), timeoutMs) {
+  return api('/command', { type, params, dimension }, timeoutMs);
 }
 function action(task) {
   return async () => {
@@ -165,8 +174,14 @@ function options(id, items, label) {
 async function catalog(kind, filters = {}, dimension = value('dimension')) {
   const items = [];
   let offset = 0, revision;
+  const deadline = performance.now() + 45000;
   do {
-    const { data } = await command('mtr.' + kind, { ...filters, offset, limit: 100, revision }, dimension);
+    const remaining = Math.floor(deadline - performance.now());
+    if (remaining <= 0) throw new Error('地图目录加载超时，请确认游戏未暂停后重试。');
+    const { data } = await command('mtr.' + kind, { ...filters, offset, limit: 100, revision }, dimension, Math.min(18000, remaining));
+    if (!Array.isArray(data?.items) || (data.nextOffset !== null && (!Number.isSafeInteger(data.nextOffset) || data.nextOffset <= offset))) {
+      throw new Error('地图目录分页数据异常，请重新加载。');
+    }
     items.push(...data.items);
     revision = data.revision;
     offset = data.nextOffset;
