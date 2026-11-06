@@ -335,7 +335,16 @@ $('loadSidings').onclick = action(async () => {
 $('copyCars').onclick = action(() => {
   const cars = sidings.find(item => item.id === value('sidingId'))?.vehicleCars;
   if (!cars?.length) throw new Error('所选轨道没有已配置的车型，请填写编组 JSON。');
-  $('vehicleCars').value = pretty(cars);
+  let minecarts = 0;
+  const copied = cars.map(car => {
+    if (car.vehicleId !== 'minecart' || car.capacity !== 0) return car;
+    minecarts++;
+    return { ...car, capacity: 1 };
+  });
+  $('vehicleCars').value = pretty(copied);
+  const invalid = copied.findIndex(car => !Number.isInteger(car.capacity) || car.capacity < 1 || car.capacity > 1000);
+  if (invalid >= 0) throw new Error('第 ' + (invalid + 1) + ' 节车厢需要填写 1～1000 的实际载客容量。');
+  if (minecarts > 0) return '已填入车型，' + minecarts + ' 节零容量矿车按每节 1 人预填，可手动修改';
   return '已填入轨道车型，请检查尺寸和容量';
 });
 function newOrder() {
@@ -370,6 +379,10 @@ $('createForm').addEventListener('submit', event => {
     if (!Array.isArray(vehicleCars) || !vehicleCars.length || vehicleCars.some(car => !car?.vehicleId || car.vehicleId === '填写实际车型ID')) {
       throw new Error('请填写包含实际车型 ID 的编组 JSON。');
     }
+    const invalidCapacity = vehicleCars.findIndex(car => !Number.isInteger(car.capacity) || car.capacity < 1 || car.capacity > 1000);
+    if (invalidCapacity >= 0) throw new Error('第 ' + (invalidCapacity + 1) + ' 节车厢的 capacity 必须是 1～1000 的整数。');
+    const capacity = vehicleCars.reduce((total, car) => total + car.capacity, 0);
+    if ($('passengerCount').valueAsNumber > capacity) throw new Error('预约人数超过编组总容量 ' + capacity + ' 人。');
     const params = { orderId: value('createOrder'), vehicleCars };
     for (const id of ['depotId', 'sidingId', 'pickupPlatformId', 'dropoffPlatformId']) params[id] = value(id);
     for (const id of ['passengerCount', 'maxSpeedKmh', 'accelerationMps2', 'decelerationMps2']) params[id] = $(id).valueAsNumber;
