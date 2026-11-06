@@ -12,8 +12,13 @@ require $autoload;
 if (!is_dir(__DIR__ . '/runtime')) mkdir(__DIR__ . '/runtime', 0770, true);
 Workerman\Worker::$logFile = __DIR__ . '/runtime/workerman.log';
 Workerman\Worker::$pidFile = __DIR__ . '/runtime/workerman.pid';
-$entry = (require __DIR__ . '/webman/config/process.taxilink.php')['taxilink'];
-$handler = new $entry['handler'](...array_values($entry['constructor']));
+try {
+    $entry = (require __DIR__ . '/webman/config/process.taxilink.php')['taxilink'];
+    $handler = new $entry['handler'](...array_values($entry['constructor']));
+} catch (RuntimeException | InvalidArgumentException $e) {
+    fwrite(STDERR, $e->getMessage() . PHP_EOL);
+    exit(1);
+}
 $worker = new Workerman\Worker($entry['listen']);
 $worker->count = 1;
 $worker->name = 'taxilink-debug';

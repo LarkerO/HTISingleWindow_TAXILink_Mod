@@ -6,12 +6,14 @@
 
 ## 独立启动（最少步骤）
 
-PHP 8.1+、Composer。每次解压到新的版本目录时，需要在该目录安装 PHP 依赖。Windows 的 `init.bat` 会在缺少依赖时调用 Composer 安装。在同一个 CMD 窗口运行：
+PHP 8.1+、Composer。每次解压到新的版本目录时，需要在该目录安装 PHP 依赖。Windows 的 `init.bat` 会在缺少依赖时调用 Composer 安装，并生成缺失的令牌文件。首次运行：
 
 ```cmd
 call init.bat
 php start.php start
 ```
+
+以后可直接运行 `php start.php start`。PHP 优先使用已设置的环境变量，变量缺失时自动读取本目录的 `.env.taxilink-mod` 和 `.env.taxilink-debug`。并入 webman 时，将两个文件放到 webman 项目根目录。
 
 `init.bat` 优先保留当前环境变量，其次读取脚本旁的 `.env.taxilink-mod` 和 `.env.taxilink-debug`，只为缺失项生成随机令牌。网页使用调试令牌。Minecraft 0.2.2 起可在 `config/taxilink.json` 中把 `tokenFile` 指向 `.env.taxilink-mod` 的绝对路径。Windows 路径可用正斜杠，或在 JSON 中写成双反斜杠。若网关使用手动设置的模组令牌，令牌文件内容也要与之匹配。
 
