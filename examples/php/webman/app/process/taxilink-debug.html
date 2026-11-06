@@ -179,12 +179,15 @@ async function catalog(kind, filters = {}, dimension = value('dimension')) {
     const remaining = Math.floor(deadline - performance.now());
     if (remaining <= 0) throw new Error('地图目录加载超时，请确认游戏未暂停后重试。');
     const { data } = await command('mtr.' + kind, { ...filters, offset, limit: 100, revision }, dimension, Math.min(18000, remaining));
-    if (!Array.isArray(data?.items) || (data.nextOffset !== null && (!Number.isSafeInteger(data.nextOffset) || data.nextOffset <= offset))) {
+    // Older mod builds omit the explicit null when wrapping the final page.
+    const nextOffset = data?.nextOffset === undefined && Array.isArray(data?.items)
+      && offset + data.items.length === data.total ? null : data?.nextOffset;
+    if (!Array.isArray(data?.items) || (nextOffset !== null && (!Number.isSafeInteger(nextOffset) || nextOffset <= offset))) {
       throw new Error('地图目录分页数据异常，请重新加载。');
     }
     items.push(...data.items);
     revision = data.revision;
-    offset = data.nextOffset;
+    offset = nextOffset;
   } while (offset !== null);
   return items;
 }

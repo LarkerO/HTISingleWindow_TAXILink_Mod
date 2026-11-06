@@ -65,6 +65,8 @@ class PhpGatewayTest {
                 assertEquals(200, response.statusCode(), response.body());
                 JsonObject message = object(response.body());
                 assertTrue(message.get("ok").getAsBoolean());
+                assertTrue(message.getAsJsonObject("data").get("nextOffset").isJsonNull(),
+                    "The final page must preserve nextOffset:null over WebSocket and HTTP");
                 assertEquals("PHP联调车厂", message.getAsJsonObject("data").getAsJsonArray("items").get(0).getAsJsonObject().get("name").getAsString());
                 assertEquals(400, post(http, base, "{\"type\":\"not-a-command\"}").statusCode());
                 var events = http.send(auth(base.resolve("/events")).GET().build(), HttpResponse.BodyHandlers.ofString());

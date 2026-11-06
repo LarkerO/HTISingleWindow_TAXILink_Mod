@@ -29,7 +29,10 @@ public final class Json {
     }
     public static JsonObject data(Object... pairs) {
         JsonObject o = new JsonObject();
-        for (int i = 0; i < pairs.length; i += 2) o.add((String) pairs[i], GSON.toJsonTree(pairs[i + 1]));
+        for (int i = 0; i < pairs.length; i += 2) {
+            Object value = pairs[i + 1];
+            o.add((String) pairs[i], value instanceof JsonElement element ? element : GSON.toJsonTree(value));
+        }
         return o;
     }
     public static void write(Path path, JsonObject data) throws IOException {
