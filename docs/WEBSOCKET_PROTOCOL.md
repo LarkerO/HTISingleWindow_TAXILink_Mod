@@ -1,5 +1,7 @@
 # TAXILink WebSocket 协议 v1（PHP 对接）
 
+0.4.0 保留下面的内层 v1 命令结构，默认外层改用 SM2 签名信封。Bearer 握手仅用于显式启用的旧版兼容模式。签名、地图、报价以及升级步骤见 [0.4.0 联调指南](SM2_MAP_QUOTE.md)。
+
 ## 连接方向与鉴权
 
 Minecraft 模组作为 WebSocket **客户端**主动连接 PHP 的 WebSocket 服务端。URL 可带路由路径；生产必须 `wss://`。本机调试只有显式设置 `allowInsecureLocalhost=true` 才允许 `ws://localhost` 或回环地址。

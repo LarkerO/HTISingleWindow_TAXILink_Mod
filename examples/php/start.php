@@ -15,7 +15,7 @@ Workerman\Worker::$pidFile = __DIR__ . '/runtime/workerman.pid';
 try {
     $entry = (require __DIR__ . '/webman/config/process.taxilink.php')['taxilink'];
     $handler = new $entry['handler'](...array_values($entry['constructor']));
-} catch (RuntimeException | InvalidArgumentException $e) {
+} catch (RuntimeException | LogicException $e) {
     fwrite(STDERR, $e->getMessage() . PHP_EOL);
     exit(1);
 }

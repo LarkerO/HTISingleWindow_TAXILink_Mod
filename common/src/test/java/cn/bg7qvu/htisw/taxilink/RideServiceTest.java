@@ -335,6 +335,19 @@ class RideServiceTest {
     }
     @Test void apiBoundaryMatchesActualBetaJar() throws Exception { MtrAccess.verify(); }
 
+    @Test void quoteUsesMtrGeometryWithoutCreatingAnOrder() {
+        JsonObject params = request();
+        params.addProperty("lowSpeedKmh", 10);
+        RoutePreview.QuoteJob job = RoutePreview.quote(sim, config, params);
+        JsonObject result = null;
+        for (int i = 0; i < 100 && result == null; i++) result = job.tick();
+        assertNotNull(result);
+        assertEquals(30, result.get("distanceMeters").getAsDouble(), 0.01);
+        assertTrue(result.getAsJsonObject("geometry").getAsJsonArray("points").size() >= 2);
+        assertTrue(sim.routes.isEmpty());
+        assertTrue(depot.getRouteIds().isEmpty());
+    }
+
     @Test void depotAllowlistMigratesAndSupportsLiveWebEditsAndReload() throws Exception {
         var configPath = temp.resolve("config/taxilink.json");
         var listPath = configPath.resolveSibling("taxilink-depots.json");

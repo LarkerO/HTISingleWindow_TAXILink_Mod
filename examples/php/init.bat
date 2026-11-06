@@ -22,7 +22,7 @@ if not exist "%~dp0vendor\autoload.php" (
     )
 )
 
-if not defined TAXILINK_TOKEN (
+if "%TAXILINK_ALLOW_LEGACY_TRANSPORT%"=="1" if not defined TAXILINK_TOKEN (
     call :loadToken "%~dp0.env.taxilink-mod" newModToken
     if errorlevel 1 exit /b 1
 )

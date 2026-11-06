@@ -40,6 +40,7 @@ class WebSocketLinkTest {
                     received.get(10, TimeUnit.SECONDS);
                 } catch (Exception e) { throw new CompletionException(e); }
             });
+            config.allowLegacyTransport = true;
             WebSocketLink link = new WebSocketLink(config, object -> received.complete(object.get("requestId").getAsString()));
             try { config.validate(); link.tick(); assertEquals("fragmented", received.get(15, TimeUnit.SECONDS)); remote.get(15, TimeUnit.SECONDS); }
             finally { link.close(); }

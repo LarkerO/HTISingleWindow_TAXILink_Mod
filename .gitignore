@@ -13,6 +13,8 @@ run/
 config/taxilink.json
 taxilink-depots.json
 taxilink.token
+taxilink-*.pem
+sm2-keys/
 taxilink-state/
 *.log
 .env

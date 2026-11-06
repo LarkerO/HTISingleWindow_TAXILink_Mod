@@ -11,6 +11,10 @@ public final class Config {
     public String endpoint = "wss://example.com/taxilink";
     public String tokenEnvironment = "TAXILINK_TOKEN";
     public String tokenFile;
+    public String sm2PrivateKeyFile = "taxilink-mod-private.pem";
+    public String sm2GatewayPublicKeyFile = "taxilink-gateway-public.pem";
+    public String opensslExecutable = "openssl";
+    public boolean allowLegacyTransport = false;
     public String serverId = "taxilink-01";
     public boolean allowInsecureLocalhost = false;
     public int telemetrySeconds = 2;
@@ -64,7 +68,17 @@ public final class Config {
             throw new IllegalArgumentException("Use wss://, or explicitly enable ws:// on localhost");
         if (!serverId.matches("[A-Za-z0-9_-]{1,64}") || telemetrySeconds < 1 || generationTimeoutSeconds < 5 || generationTimeoutSeconds > 600 || maxActiveRides < 1 || maxActiveRides > 1024 || maxMessageBytes < 1024 || maxMessageBytes > 1048576 || maxPendingCommands < 1 || maxPendingCommands > 4096)
             throw new IllegalArgumentException("Invalid TAXILink limits/serverId");
-        token();
+        if (allowLegacyTransport) token();
+    }
+
+    Sm2Wire sm2Wire() {
+        return allowLegacyTransport ? null : new Sm2Wire(opensslExecutable,
+            keyPath(sm2PrivateKeyFile), keyPath(sm2GatewayPublicKeyFile));
+    }
+
+    private Path keyPath(String file) {
+        Path path = Path.of(file);
+        return path.isAbsolute() || configDirectory == null ? path.toAbsolutePath() : configDirectory.resolve(path).normalize();
     }
     public static Config load(Path path) throws Exception {
         boolean fresh = Files.notExists(path);

@@ -1,7 +1,9 @@
 {
   "enabled": true,
   "endpoint": "wss://dispatch.example.com/taxilink",
-  "tokenFile": "taxilink.token",
+  "sm2PrivateKeyFile": "taxilink-mod-private.pem",
+  "sm2GatewayPublicKeyFile": "taxilink-gateway-public.pem",
+  "opensslExecutable": "openssl",
   "serverId": "taxilink-01",
   "allowInsecureLocalhost": false,
   "telemetrySeconds": 2,

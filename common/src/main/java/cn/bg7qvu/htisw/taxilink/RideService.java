@@ -89,6 +89,13 @@ public final class RideService {
         if (ride == null) throw new Fault("ORDER_NOT_FOUND", "Unknown orderId");
         return switch (type) {
             case "taxi.status" -> status(sim, ride);
+            case "taxi.geometry" -> {
+                Vehicle v = vehicle(sim, ride);
+                if (v == null || ride.terminal() || v.vehicleExtraData.immutablePath.isEmpty())
+                    throw new Fault("VEHICLE_NOT_READY", "Vehicle path is not available");
+                yield RoutePreview.geometry(sim, v.vehicleExtraData.immutablePath,
+                    ((Number) MtrAccess.read(v, "railProgress")).doubleValue());
+            }
             case "taxi.passengers" -> passengerStatus(sim, ride);
             case "taxi.depart" -> {
                 Vehicle v = vehicle(sim, ride);

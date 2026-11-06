@@ -20,6 +20,19 @@ $readToken = static function (string $variable, string $file) use ($tokenDirecto
     return trim($saved);
 };
 
+$legacy = getenv('TAXILINK_ALLOW_LEGACY_TRANSPORT') === '1';
+$sm2 = $legacy ? null : new app\process\Sm2Wire(
+    getenv('TAXILINK_OPENSSL') ?: 'openssl',
+    getenv('TAXILINK_GATEWAY_PRIVATE_KEY') ?: $tokenDirectory . '/taxilink-gateway-private.pem',
+    getenv('TAXILINK_MOD_PUBLIC_KEY') ?: $tokenDirectory . '/taxilink-mod-public.pem'
+);
+$businessKey = getenv('TAXILINK_BUSINESS_PUBLIC_KEY');
+$business = !$businessKey ? null : new app\process\Sm2Wire(
+    getenv('TAXILINK_OPENSSL') ?: 'openssl',
+    getenv('TAXILINK_GATEWAY_PRIVATE_KEY') ?: $tokenDirectory . '/taxilink-gateway-private.pem',
+    $businessKey
+);
+
 return [
     'taxilink' => [
         'handler' => app\process\TaxilinkGateway::class,
@@ -28,9 +41,11 @@ return [
         'count' => 1,
         'constructor' => [
             'serverId' => getenv('TAXILINK_SERVER_ID') ?: 'taxilink-01',
-            'modToken' => $readToken('TAXILINK_TOKEN', '.env.taxilink-mod'),
+            'modToken' => $legacy ? $readToken('TAXILINK_TOKEN', '.env.taxilink-mod') : '',
             'debugToken' => $readToken('TAXILINK_DEBUG_TOKEN', '.env.taxilink-debug'),
             'httpListen' => getenv('TAXILINK_HTTP_LISTEN') ?: 'http://127.0.0.1:8789',
+            'sm2' => $sm2,
+            'business' => $business,
         ],
     ],
 ];

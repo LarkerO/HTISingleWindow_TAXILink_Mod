@@ -1,0 +1,19 @@
+{
+  "timezone": "Asia/Shanghai",
+  "currency": "CNY",
+  "metersPerBlock": 1,
+  "includedKilometers": 2.5,
+  "includedLowSpeedMinutes": 7,
+  "lowSpeedKmh": 10,
+  "default": {"base": 6, "perKilometer": 1.57, "perLowSpeedMinute": 0.35},
+  "bands": [
+    {"from": "00:00", "until": "05:00", "base": 7, "perKilometer": 2.50, "perLowSpeedMinute": 0.37},
+    {"from": "12:00", "until": "14:00", "base": 7, "perKilometer": 1.60, "perLowSpeedMinute": 0.35},
+    {"from": "16:00", "until": "18:00", "base": 7, "perKilometer": 1.64, "perLowSpeedMinute": 0.35},
+    {"from": "23:00", "until": "24:00", "base": 7, "perKilometer": 2.50, "perLowSpeedMinute": 0.37}
+  ],
+  "distanceSurcharges": [
+    {"fromKilometers": 5, "untilKilometers": 15, "perKilometer": 0.82},
+    {"fromKilometers": 15, "untilKilometers": null, "perKilometer": 1.00}
+  ]
+}

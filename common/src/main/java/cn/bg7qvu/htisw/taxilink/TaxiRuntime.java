@@ -19,11 +19,13 @@ public final class TaxiRuntime implements AutoCloseable {
     private final AtomicInteger pending = new AtomicInteger();
     private volatile boolean closed;
     private volatile long lastErrorLog;
+    private record PendingQuote(JsonObject request, RoutePreview.QuoteJob job, long deadline) {}
     private static final class Context {
         final Simulator simulator;
         final RideService rides;
         final AtomicBoolean enqueued = new AtomicBoolean();
         final Queue<JsonObject> commands = new ConcurrentLinkedQueue<>();
+        final ArrayDeque<PendingQuote> quotes = new ArrayDeque<>();
         long lastTelemetry;
         Context(Simulator simulator, RideService rides) { this.simulator = simulator; this.rides = rides; }
     }
@@ -58,9 +60,25 @@ public final class TaxiRuntime implements AutoCloseable {
                 pending.decrementAndGet();
                 try {
                     JsonObject payload = request.getAsJsonObject("params");
+                    if (string(request, "type").equals("taxi.quote")) {
+                        if (c.quotes.size() >= 8) throw new Fault("SERVER_BUSY", "Too many pending quotes");
+                        c.quotes.add(new PendingQuote(request, RoutePreview.quote(c.simulator, config, payload), System.nanoTime() + TimeUnit.SECONDS.toNanos(12)));
+                        continue;
+                    }
                     JsonObject result = c.rides.command(c.simulator, string(request, "type"), payload);
                     link.send(data("type", "response", "requestId", request.get("requestId").getAsString(), "ok", true, "data", result));
                 } catch (Exception e) { reject(request, e instanceof Fault f ? f.code : "INTERNAL_ERROR", e instanceof Fault ? e.getMessage() : "MTR operation failed; inspect server log"); }
+            }
+            if (!c.quotes.isEmpty()) {
+                PendingQuote quote = c.quotes.removeFirst();
+                try {
+                    if (System.nanoTime() > quote.deadline()) throw new Fault("QUOTE_TIMEOUT", "Route preview timed out");
+                    JsonObject result = quote.job().tick();
+                    if (result == null) c.quotes.addLast(quote);
+                    else link.send(data("type", "response", "requestId", string(quote.request(), "requestId"), "ok", true, "data", result));
+                } catch (Exception e) {
+                    reject(quote.request(), e instanceof Fault f ? f.code : "INTERNAL_ERROR", e.getMessage());
+                }
             }
             boolean telemetry = System.currentTimeMillis() - c.lastTelemetry >= config.telemetrySeconds * 1000L;
             if (telemetry) c.lastTelemetry = System.currentTimeMillis();
@@ -83,7 +101,7 @@ public final class TaxiRuntime implements AutoCloseable {
                 link.send(data("type", "response", "requestId", request.get("requestId").getAsString(), "ok", true, "data", data("dimensions", dimensions)));
                 return;
             }
-            if (!Set.of("taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers").contains(type)
+            if (!Set.of("taxi.quote", "taxi.geometry", "taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers").contains(type)
                 && !MtrCatalog.COMMANDS.contains(type) && !RideService.DEPOT_COMMANDS.contains(type)) throw new Fault("UNKNOWN_COMMAND", type);
             String dimension = string(request, "dimension");
             Context context = contexts.get(dimension);

@@ -82,7 +82,8 @@ summary { cursor: pointer; }
   }
 ]</textarea>
       </label>
-      <div class="actions"><button type="submit" class="primary">发送创建订单</button></div>
+      <div class="actions"><button type="button" id="quote">预估价格与路线</button><button type="submit" class="primary">确认发单</button></div>
+      <p id="quoteSummary" class="muted" role="status"></p>
     </form>
   </section>
   <section>
@@ -96,6 +97,13 @@ summary { cursor: pointer; }
     <ul id="riders" aria-label="在车乘客"></ul>
     <div class="scroll"><table><thead><tr><th>订单号</th><th>状态</th><th>车牌</th></tr></thead><tbody id="orderRows"></tbody></table></div>
     <h3>最近一次操作响应</h3><pre id="response" aria-label="最近一次操作响应">等待操作</pre>
+  </section>
+  <section class="wide">
+    <h2>路线轨迹</h2>
+    <p class="muted">青色为已走过，蓝色为即将行驶。采用 X/Z 俯视坐标。</p>
+    <label><input id="trackRoute" type="checkbox" style="display:inline;width:auto"> 跟踪当前订单</label>
+    <canvas id="routeMap" width="1000" height="360" style="width:100%;background:#101820" aria-label="线路轨迹"></canvas>
+    <p id="mapStatus" class="muted" role="status"></p>
   </section>
   <section class="wide">
     <h2>MTR 地图目录</h2>
@@ -116,6 +124,7 @@ const $ = id => document.getElementById(id);
 const value = id => $(id).value.trim();
 const pretty = data => JSON.stringify(data, null, 2);
 let token = '', cursor = 0, pollTimer, busy = false, session = 0, sidings = [];
+let quotedInput = '', quoteId = null;
 
 function notice(message, error = false) {
   $('notice').textContent = message;
@@ -214,6 +223,16 @@ async function poll(currentSession) {
     }
     if (currentSession !== session) return;
     cursor = feed.cursor;
+    if ($('trackRoute').checked && value('orderId') && !busy && health.connected) {
+      const orderId = value('orderId'), dimension = value('dimension');
+      try {
+        const { data } = await command('taxi.geometry', { orderId }, dimension);
+        if (currentSession === session && $('trackRoute').checked && orderId === value('orderId') && dimension === value('dimension'))
+          drawGeometry(data);
+      } catch (error) {
+        $('mapStatus').textContent = error.message;
+      }
+    }
     for (const entry of feed.events) {
       const details = document.createElement('details');
       const title = document.createElement('summary');
@@ -373,9 +392,7 @@ function showOrder(data, dimension) {
     return item;
   }));
 }
-$('createForm').addEventListener('submit', event => {
-  event.preventDefault();
-  void action(async () => {
+function orderParams() {
     const vehicleCars = JSON.parse(value('vehicleCars'));
     if (!Array.isArray(vehicleCars) || !vehicleCars.length || vehicleCars.some(car => !car?.vehicleId || car.vehicleId === '填写实际车型ID')) {
       throw new Error('请填写包含实际车型 ID 的编组 JSON。');
@@ -388,8 +405,57 @@ $('createForm').addEventListener('submit', event => {
     for (const id of ['depotId', 'sidingId', 'pickupPlatformId', 'dropoffPlatformId']) params[id] = value(id);
     for (const id of ['passengerCount', 'maxSpeedKmh', 'accelerationMps2', 'decelerationMps2']) params[id] = $(id).valueAsNumber;
     if (value('routeName')) params.routeName = value('routeName');
+    return params;
+}
+function drawGeometry(geometry) {
+  const canvas = $('routeMap'), ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const points = geometry.points;
+  if (!points?.length) return;
+  const x = points.map(p => p[1]), z = points.map(p => p[3]);
+  const minX = Math.min(...x), minZ = Math.min(...z);
+  const scale = Math.min((canvas.width - 40) / Math.max(1, Math.max(...x) - minX),
+    (canvas.height - 40) / Math.max(1, Math.max(...z) - minZ));
+  const project = p => [20 + (p[1] - minX) * scale, 20 + (p[3] - minZ) * scale];
+  function segment(a, b, color) {
+    ctx.beginPath();
+    ctx.moveTo(...project(a));
+    ctx.lineTo(...project(b));
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i];
+    const progress = geometry.progressMeters;
+    if (a[0] < progress && progress < b[0]) {
+      const fraction = (progress - a[0]) / (b[0] - a[0]);
+      const mid = a.map((v, axis) => v + (b[axis] - v) * fraction);
+      segment(a, mid, '#72e1c7');
+      segment(mid, b, '#638dff');
+    } else segment(a, b, b[0] <= progress ? '#72e1c7' : '#638dff');
+  }
+  $('mapStatus').textContent = '已走 ' + Math.round(geometry.progressMeters) + ' / ' + Math.round(geometry.totalMeters) + ' 格';
+}
+$('quote').onclick = action(async () => {
+  if (!$('createForm').reportValidity()) return '请先填写发单参数';
+  const params = orderParams(), dimension = value('dimension');
+  const { data } = await command('taxi.quote', params, dimension);
+  quotedInput = JSON.stringify({ params, dimension });
+  quoteId = data.quoteId;
+  $('quoteSummary').textContent = data.fare.currency + ' ' + (data.fare.amountMinor / 100).toFixed(2)
+    + ' · ' + Math.round(data.distanceMeters) + ' 格 · 预计 ' + data.estimatedSeconds + ' 秒';
+  drawGeometry(data.geometry);
+  $('response').textContent = pretty(data.fare);
+  return '报价已计算，可以确认发单';
+});
+$('createForm').addEventListener('submit', event => {
+  event.preventDefault();
+  void action(async () => {
+    const params = orderParams();
     const dimension = value('dimension');
-    const { data } = await command('taxi.create', params, dimension);
+    if (quotedInput !== JSON.stringify({ params, dimension })) throw new Error('请先按当前订单参数预估价格。');
+    const { data } = await command('taxi.create', { ...params, quoteId }, dimension);
     if (dimension === value('dimension')) $('orderId').value = data.orderId;
     showOrder(data, dimension);
     return '订单已受理，可查询状态或查看发车事件';

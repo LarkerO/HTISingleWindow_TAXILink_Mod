@@ -14,6 +14,7 @@ import static cn.bg7qvu.htisw.taxilink.Json.data;
 public final class WebSocketLink implements AutoCloseable {
     private final Config config;
     private final Consumer<JsonObject> incoming;
+    private final Sm2Wire sm2;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final AtomicBoolean connecting = new AtomicBoolean();
     private final AtomicInteger queued = new AtomicInteger();
@@ -22,7 +23,7 @@ public final class WebSocketLink implements AutoCloseable {
     private volatile long nextAttempt, lastPong, lastPing;
     private int failures;
     private CompletableFuture<Void> sends = CompletableFuture.completedFuture(null);
-    public WebSocketLink(Config config, Consumer<JsonObject> incoming) { this.config = config; this.incoming = incoming; }
+    public WebSocketLink(Config config, Consumer<JsonObject> incoming) { this.config = config; this.incoming = incoming; sm2 = config.sm2Wire(); }
     public void tick() {
         if (closed) return;
         long now = System.currentTimeMillis();
@@ -36,10 +37,14 @@ public final class WebSocketLink implements AutoCloseable {
             return;
         }
         if (now < nextAttempt || !connecting.compareAndSet(false, true)) return;
-        client.newWebSocketBuilder().connectTimeout(Duration.ofSeconds(10))
-            .header("Authorization", "Bearer " + config.token())
-            .header("X-TAXILink-Server", config.serverId)
-            .buildAsync(URI.create(config.endpoint), new Listener())
+        var builder = client.newWebSocketBuilder().connectTimeout(Duration.ofSeconds(10)).header("X-TAXILink-Server", config.serverId);
+        try {
+            if (sm2 == null) builder.header("Authorization", "Bearer " + config.token());
+            else builder.header("X-TAXILink-Proof", sm2.sign("handshake", data("serverId", config.serverId).toString()));
+        } catch (RuntimeException e) {
+            connecting.set(false); retry(); throw e;
+        }
+        builder.buildAsync(URI.create(config.endpoint), new Listener())
             .whenComplete((ws, error) -> {
                 connecting.set(false);
                 if (error != null) retry();
@@ -59,9 +64,9 @@ public final class WebSocketLink implements AutoCloseable {
         object.addProperty("v", 1); object.addProperty("serverId", config.serverId); object.addProperty("timestamp", System.currentTimeMillis());
         if (queued.incrementAndGet() > 256) { queued.decrementAndGet(); disconnected(active); active.abort(); return; }
         String text = object.toString();
-        sends = sends.handle((ignored, error) -> null).thenCompose(ignored -> {
+        sends = sends.handle((ignored, error) -> null).thenComposeAsync(ignored -> {
             if (socket != active || closed) return CompletableFuture.completedFuture(null);
-            return active.sendText(text, true).orTimeout(10, TimeUnit.SECONDS).thenApply(ws -> (Void) null);
+            return active.sendText(sm2 == null ? text : sm2.sign("mod", text), true).orTimeout(10, TimeUnit.SECONDS).thenApply(ws -> (Void) null);
         }).whenComplete((ignored, error) -> {
             queued.decrementAndGet();
             if (error != null) { disconnected(active); active.abort(); }
@@ -74,16 +79,22 @@ public final class WebSocketLink implements AutoCloseable {
             if (closed) { ws.abort(); return; }
             socket = ws; failures = 0; lastPong = lastPing = System.currentTimeMillis();
             send(data("type", "subscribe", "topics", new String[]{"taxilink.commands." + config.serverId},
-                "capabilities", new String[]{"taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers", "mtr.dimensions", "mtr.depots", "mtr.sidings", "mtr.routes", "mtr.stations", "mtr.platforms", "taxi.depots.list", "taxi.depots.add", "taxi.depots.remove", "taxi.depots.reload"}));
+                "capabilities", new String[]{"taxi.quote", "taxi.geometry", "taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers", "mtr.dimensions", "mtr.depots", "mtr.sidings", "mtr.routes", "mtr.stations", "mtr.platforms", "taxi.depots.list", "taxi.depots.add", "taxi.depots.remove", "taxi.depots.reload"}));
             ws.request(1);
         }
         @Override public CompletionStage<?> onText(WebSocket ws, CharSequence fragment, boolean last) {
             bytes += fragment.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
-            if (bytes > config.maxMessageBytes) { ws.sendClose(1009, "Message too large"); disconnected(ws); return null; }
+            int limit = sm2 == null ? config.maxMessageBytes : ((config.maxMessageBytes + 2) / 3) * 4 + 512;
+            if (bytes > limit) { ws.sendClose(1009, "Message too large"); disconnected(ws); return null; }
             text.append(fragment);
             if (last) {
-                try { incoming.accept(Json.object(text.toString())); }
-                catch (Exception e) { send(data("type", "protocol.error", "error", data("code", "INVALID_JSON", "message", "Expected a JSON object"))); }
+                try {
+                    String payload = sm2 == null ? text.toString() : sm2.verify("gateway", text.toString());
+                    if (payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > config.maxMessageBytes)
+                        throw new IllegalArgumentException("Message too large");
+                    incoming.accept(Json.object(payload));
+                }
+                catch (Exception e) { disconnected(ws); ws.abort(); return null; }
                 text.setLength(0); bytes = 0;
             }
             ws.request(1); return null;

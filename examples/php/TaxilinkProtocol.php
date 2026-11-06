@@ -11,7 +11,7 @@ final class TaxilinkProtocol
 
     public function command(string $type, array $params = [], ?string $requestId = null): string
     {
-        $allowed = ['taxi.create', 'taxi.status', 'taxi.list', 'taxi.passengers', 'taxi.doors', 'taxi.depart', 'taxi.destroy',
+        $allowed = ['taxi.quote', 'taxi.geometry', 'taxi.create', 'taxi.status', 'taxi.list', 'taxi.passengers', 'taxi.doors', 'taxi.depart', 'taxi.destroy',
             'mtr.dimensions', 'mtr.depots', 'mtr.sidings', 'mtr.routes', 'mtr.stations', 'mtr.platforms',
             'taxi.depots.list', 'taxi.depots.add', 'taxi.depots.remove', 'taxi.depots.reload'];
         if (!in_array($type, $allowed, true)) {

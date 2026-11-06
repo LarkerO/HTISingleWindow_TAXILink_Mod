@@ -6,16 +6,14 @@
 
 ## 独立启动（最少步骤）
 
-PHP 8.1+、Composer。每次解压到新的版本目录时，需要在该目录安装 PHP 依赖。Windows 的 `init.bat` 会在缺少依赖时调用 Composer 安装，并生成缺失的令牌文件。首次运行：
+PHP 8.1+、Composer、OpenSSL 3.x。首次启动前，按 [0.4.0 联调指南](../../../docs/SM2_MAP_QUOTE.md) 生成并安装两端密钥。Windows 的 `init.bat` 会安装缺失的 PHP 依赖并生成网页调试令牌。
 
 ```cmd
 call init.bat
 php start.php start
 ```
 
-以后可直接运行 `php start.php start`。PHP 优先使用已设置的环境变量，变量缺失时自动读取本目录的 `.env.taxilink-mod` 和 `.env.taxilink-debug`。并入 webman 时，将两个文件放到 webman 项目根目录。
-
-`init.bat` 优先保留当前环境变量，其次读取脚本旁的 `.env.taxilink-mod` 和 `.env.taxilink-debug`，只为缺失项生成随机令牌。网页使用调试令牌。Minecraft 0.2.2 起可在 `config/taxilink.json` 中把 `tokenFile` 指向 `.env.taxilink-mod` 的绝对路径。Windows 路径可用正斜杠，或在 JSON 中写成双反斜杠。若网关使用手动设置的模组令牌，令牌文件内容也要与之匹配。
+以后可直接运行 `php start.php start`。网页令牌优先使用环境变量，其次读本目录的 `.env.taxilink-debug`。并入 webman 时放在项目根目录。显式启用旧版兼容模式时，`init.bat` 还会准备 `.env.taxilink-mod`。
 
 若调试令牌由脚本生成，可在启动网关前用 `type .env.taxilink-debug` 查看并复制到网页。
 
@@ -23,12 +21,12 @@ php start.php start
 
 ```powershell
 $env:TAXILINK_SERVER_ID = 'taxilink-01'
-$env:TAXILINK_TOKEN = 'replace-with-a-random-mod-token'
-$env:TAXILINK_DEBUG_TOKEN = 'replace-with-a-different-random-debug-token'
+$env:TAXILINK_OPENSSL = 'C:/Program Files/Git/usr/bin/openssl.exe'
+$env:TAXILINK_DEBUG_TOKEN = 'replace-with-a-random-debug-token'
 php start.php start
 ```
 
-Linux 可用 `export` 设置相同环境变量，再 `php start.php start`（或 `start -d`）。两个令牌必须非空且不同。没有硬编码生产令牌。
+Linux 可用 `export` 设置相同环境变量，再运行 `php start.php start` 或 `php start.php start -d`。
 
 默认监听：
 
@@ -71,8 +69,8 @@ Invoke-RestMethod http://127.0.0.1:8789/command -Method Post -Headers $headers -
 
 ## 并入已有 webman
 
-1. 确认 PHP >=8.1、Workerman >=5.1。将 `app/process/TaxilinkGateway.php` 和同目录的 `taxilink-debug.html` 一起复制到 webman 的 `app/process` 目录。
-2. 把上一级 `TaxilinkProtocol.php` 复制到 webman 项目根目录；把 `config/process.taxilink.php` 复制到 webman 的 config。
+1. 确认 PHP >=8.1、Workerman >=5.1。把 `app/process` 内的 PHP 文件与调试页复制到 webman 同名目录。
+2. 把上一级 `TaxilinkProtocol.php` 复制到 webman 项目根目录，把 `config/process.taxilink.php` 和 `config/taxilink-fares.json` 复制到 webman 的 config。
 3. 在现有 `config/process.php` 的返回数组中合并 `(require __DIR__ . '/process.taxilink.php')`。不要另建普通 HTTP controller 去读取处理器内存。
 4. 设置同样的环境变量，正常启动 webman。调试 HTTP 端口仍是 8789，业务 webman HTTP 端口不受影响。
 
@@ -84,4 +82,4 @@ Invoke-RestMethod http://127.0.0.1:8789/command -Method Post -Headers $headers -
 php tests/protocol.php
 ```
 
-项目的可选 `PhpGatewayTest` 会启动本处理器，使用真实 JDK WebSocket 与真实 MTR Core 查询，验证 HTTP 鉴权、离线状态、订阅、请求往返、事件与断线。设置 TAXILINK_TEST_PHP 为 php 可执行文件绝对路径、TAXILINK_TEST_MOD_TOKEN 为一次性测试令牌后，从仓库根运行 `gradlew.bat test`。未配置 PHP 时该集成测试会跳过。
+项目的可选 `PhpGatewayTest` 会启动本处理器，验证 SM2 握手与双向签名、重复包拒绝、实际 MTR 目录查询、签名业务请求和报价绑定。设置 `TAXILINK_TEST_PHP` 和 `TAXILINK_TEST_OPENSSL` 为对应可执行文件路径后，从仓库根运行 `gradlew.bat test`。未配置 PHP 时该测试会跳过。

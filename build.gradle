@@ -1,6 +1,6 @@
 allprojects {
     group = 'cn.bg7qvu.htisw.taxilink'
-    version = '0.3.2'
+    version = '0.4.0'
     repositories {
         mavenCentral()
         maven { url = 'https://libraries.minecraft.net/' }
@@ -25,7 +25,7 @@ tasks.register('stageRelease', Sync) {
     from('docs') { into 'docs' }
     from('examples') {
         into 'examples'
-        exclude '**/vendor/**', '**/runtime/**', '**/.env', '**/.env.*', '**/taxilink.token'
+        exclude '**/vendor/**', '**/runtime/**', '**/.env', '**/.env.*', '**/taxilink.token', '**/taxilink-*.pem', '**/sm2-keys/**'
     }
 }
 tasks.register('packageRelease', Zip) {
