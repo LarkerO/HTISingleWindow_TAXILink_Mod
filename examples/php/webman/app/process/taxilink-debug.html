@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAXILink 调试台</title>
+<style>
+:root { color-scheme: dark; font: 15px/1.55 system-ui, sans-serif; background: #101820; color: #e8eff6; }
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 1250px; padding: 24px; }
+h1, h2, h3, p { margin: 0 0 .65rem; }
+h1 { font-size: 1.85rem; } h2 { font-size: 1.25rem; } h3 { font-size: 1rem; }
+header { margin-bottom: 16px; }
+section { background: #18242f; border: 1px solid #304355; border-radius: 12px; padding: 18px; min-width: 0; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.wide { grid-column: 1 / -1; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+label { display: block; color: #c9d9e7; }
+input, textarea, button { font: inherit; border: 1px solid #536c80; border-radius: 6px; padding: 7px 10px; }
+input, textarea { width: 100%; background: #101820; color: inherit; display: block; margin-top: 3px; }
+textarea, pre { font-family: ui-monospace, Consolas, monospace; }
+button { background: #263b4c; color: inherit; cursor: pointer; }
+button:disabled { opacity: .5; cursor: wait; }
+button.primary { background: #007568; }
+button.danger { background: #80394a; }
+:focus-visible { outline: 2px solid #72e1c7; outline-offset: 2px; }
+.muted { color: #aebfce; }
+.online { color: #81e3bc; } .error { color: #ffb0af; }
+pre { background: #101820; border-radius: 6px; padding: 10px; overflow: auto; max-height: 300px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.scroll { overflow: auto; max-height: 260px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #304355; overflow-wrap: anywhere; }
+summary { cursor: pointer; }
+#notice { min-height: 1.6em; margin: 12px 0; }
+@media (max-width: 720px) { body { padding: 12px; } .grid, .fields { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<header><h1>TAXILink 调试台</h1><p class="muted">测试发单、查看车辆状态和 MTR 地图数据。</p></header>
+<section>
+  <h2>网关连接</h2>
+  <div class="fields">
+    <label>调试令牌<input id="token" type="password" autocomplete="off" placeholder="TAXILINK_DEBUG_TOKEN"></label>
+    <label>维度<input id="dimension" list="dimensions" value="minecraft/overworld"><datalist id="dimensions"></datalist></label>
+  </div>
+  <div class="actions"><button id="connect" class="primary">连接调试网关</button><button id="loadDimensions">获取维度</button></div>
+  <p id="connection" class="muted" role="status">等待输入令牌</p>
+</section>
+<p id="notice" role="status" aria-live="polite"></p>
+<main class="grid">
+  <section>
+    <h2>测试发单</h2>
+    <p class="muted">可粘贴 ID，或加载地图数据后从建议中选取。发单受理后，可在右侧查询寻路和发车状态。</p>
+    <div class="actions"><button id="loadMap">加载车厂和站台</button><button id="loadSidings">加载所选车厂轨道</button></div>
+    <form id="createForm">
+      <div class="fields">
+        <label>订单号<input id="createOrder" required maxlength="256"></label>
+        <label>路线名称（可选）<input id="routeName" maxlength="256" placeholder="默认 TAXILink + 车牌"></label>
+        <label>车厂 ID<input id="depotId" list="depots" required pattern="-?[1-9][0-9]{0,18}"><datalist id="depots"></datalist></label>
+        <label>车厂轨道 ID<input id="sidingId" list="sidings" required pattern="-?[1-9][0-9]{0,18}"><datalist id="sidings"></datalist></label>
+        <label>上车站台 ID<input id="pickupPlatformId" list="platforms" required pattern="-?[1-9][0-9]{0,18}"></label>
+        <label>下车站台 ID<input id="dropoffPlatformId" list="platforms" required pattern="-?[1-9][0-9]{0,18}"><datalist id="platforms"></datalist></label>
+        <label>预约人数<input id="passengerCount" type="number" min="1" max="16000" value="1" required></label>
+        <label>限速（km/h）<input id="maxSpeedKmh" type="number" min="1" max="160" step="any" value="30" required></label>
+        <label>加速度（m/s²）<input id="accelerationMps2" type="number" min="0.1" max="4" step="any" value="1" required></label>
+        <label>减速度（m/s²）<input id="decelerationMps2" type="number" min="0.1" max="4" step="any" value="1" required></label>
+      </div>
+      <div class="actions"><button type="button" id="copyCars">采用所选轨道车型</button><button type="button" id="newOrder">生成新订单号</button></div>
+      <label>车辆编组 JSON（车型 ID 和尺寸须与实际资源匹配）
+        <textarea id="vehicleCars" required rows="8" spellcheck="false">[
+  {
+    "vehicleId": "填写实际车型ID", "length": 4.5, "width": 2, "capacity": 4,
+    "bogie1Position": -1.2, "bogie2Position": 1.2,
+    "couplingPadding1": 0, "couplingPadding2": 0
+  }
+]</textarea>
+      </label>
+      <div class="actions"><button type="submit" class="primary">发送创建订单</button></div>
+    </form>
+  </section>
+  <section>
+    <h2>订单与车辆</h2>
+    <label>查询订单号<input id="orderId" list="orders" maxlength="256"><datalist id="orders"></datalist></label>
+    <div class="actions">
+      <button id="listOrders">获取订单列表</button><button id="status" class="primary">查询状态</button><button id="passengers">查看乘客</button>
+      <button id="openDoors">开门</button><button id="closeDoors">关门</button><button id="destroy" class="danger">销毁订单车辆</button>
+    </div>
+    <p id="orderSummary" role="status" class="muted">可从订单列表选择，也可直接输入订单号。</p>
+    <ul id="riders" aria-label="在车乘客"></ul>
+    <div class="scroll"><table><thead><tr><th>订单号</th><th>状态</th><th>车牌</th></tr></thead><tbody id="orderRows"></tbody></table></div>
+    <h3>最近一次操作响应</h3><pre id="response" aria-label="最近一次操作响应">等待操作</pre>
+  </section>
+  <section class="wide">
+    <h2>MTR 地图目录</h2>
+    <div class="actions" id="catalogButtons">
+      <button data-kind="depots">车厂</button><button data-kind="sidings">车厂轨道</button><button data-kind="stations">车站</button><button data-kind="platforms">站台</button><button data-kind="routes">路线</button>
+    </div>
+    <pre id="catalog">选择目录加载当前维度的数据。</pre>
+  </section>
+  <section class="wide">
+    <h2>实时事件</h2>
+    <p class="muted">连接后每两秒更新，显示最新 50 条事件。展开事件查看完整内容。</p>
+    <div class="scroll" id="events"></div>
+  </section>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const value = id => $(id).value.trim();
+const pretty = data => JSON.stringify(data, null, 2);
+let token = '', cursor = 0, pollTimer, busy = false, session = 0, sidings = [];
+
+function notice(message, error = false) {
+  $('notice').textContent = message;
+  $('notice').className = error ? 'error' : '';
+}
+async function api(path, body) {
+  if (!token) throw new Error('请先连接调试网关。');
+  const headers = { Authorization: 'Bearer ' + token };
+  const options = { headers, cache: 'no-store' };
+  if (body) {
+    headers['Content-Type'] = 'application/json';
+    options.method = 'POST';
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(path, options);
+  const result = await response.json();
+  if (!response.ok || result.ok === false) {
+    const error = result.error;
+    throw Object.assign(new Error(typeof error === 'string' ? error + (result.message ? ' · ' + result.message : '') : [error?.code, error?.message].filter(Boolean).join(' · ') || 'HTTP ' + response.status), { result });
+  }
+  return result;
+}
+function command(type, params = {}, dimension = value('dimension')) {
+  return api('/command', { type, params, dimension });
+}
+function action(task) {
+  return async () => {
+    if (busy) return;
+    busy = true;
+    const buttons = [...document.querySelectorAll('button')];
+    buttons.forEach(button => { button.disabled = true; });
+    notice('正在处理…');
+    try {
+      const message = await task();
+      notice(message || '操作完成');
+    } catch (error) {
+      notice(error.message, true);
+      $('response').textContent = pretty(error.result || { error: error.message });
+    } finally {
+      busy = false;
+      buttons.forEach(button => { button.disabled = false; });
+    }
+  };
+}
+function options(id, items, label) {
+  $(id).replaceChildren(...items.map(item => {
+    const option = document.createElement('option');
+    option.value = item.id;
+    option.label = label(item);
+    return option;
+  }));
+}
+async function catalog(kind, filters = {}, dimension = value('dimension')) {
+  const items = [];
+  let offset = 0, revision;
+  do {
+    const { data } = await command('mtr.' + kind, { ...filters, offset, limit: 100, revision }, dimension);
+    items.push(...data.items);
+    revision = data.revision;
+    offset = data.nextOffset;
+  } while (offset !== null);
+  return items;
+}
+function healthLabel(health) {
+  $('connection').className = health.connected ? 'online' : 'muted';
+  $('connection').textContent = health.serverId + (health.connected ? ' · 模组已连接' : ' · 模组离线') + ' · 待处理 ' + health.pending;
+}
+async function poll(currentSession) {
+  try {
+    const health = await api('/health');
+    if (currentSession !== session) return;
+    healthLabel(health);
+    let feed = await api('/events?afterCursor=' + cursor);
+    if (feed.cursor < cursor) {
+      if (currentSession !== session) return;
+      $('events').replaceChildren();
+      feed = await api('/events?afterCursor=0');
+    }
+    if (currentSession !== session) return;
+    cursor = feed.cursor;
+    for (const entry of feed.events) {
+      const details = document.createElement('details');
+      const title = document.createElement('summary');
+      const content = document.createElement('pre');
+      const message = entry.message;
+      title.textContent = '#' + entry.cursor + ' · ' + message.type + (message.data?.orderId ? ' · ' + message.data.orderId : '');
+      content.textContent = pretty(message);
+      details.append(title, content);
+      $('events').prepend(details);
+      if ($('events').childElementCount > 50) $('events').lastElementChild.remove();
+    }
+  } catch (error) {
+    if (currentSession === session) {
+      $('connection').className = 'error';
+      $('connection').textContent = '网关查询失败 · ' + error.message;
+    }
+  } finally {
+    if (currentSession === session) pollTimer = setTimeout(() => poll(currentSession), 2000);
+  }
+}
+$('connect').onclick = action(async () => {
+  const currentSession = ++session;
+  clearTimeout(pollTimer);
+  token = value('token');
+  $('connection').className = 'muted';
+  $('connection').textContent = '验证调试令牌…';
+  try {
+    healthLabel(await api('/health'));
+  } catch (error) {
+    token = '';
+    $('connection').className = 'error';
+    $('connection').textContent = '连接失败';
+    throw error;
+  }
+  $('token').value = '';
+  $('events').replaceChildren();
+  cursor = 0;
+  void poll(currentSession);
+  return '网关鉴权成功';
+});
+$('loadDimensions').onclick = action(async () => {
+  const { data } = await command('mtr.dimensions');
+  options('dimensions', data.dimensions.map(id => ({ id })), item => item.id);
+  $('response').textContent = pretty(data);
+  return '已加载 ' + data.dimensions.length + ' 个维度';
+});
+$('loadMap').onclick = action(async () => {
+  const dimension = value('dimension');
+  const [depots, platforms] = await Promise.all([catalog('depots', {}, dimension), catalog('platforms', {}, dimension)]);
+  if (dimension !== value('dimension')) return '维度已更改，请重新加载';
+  options('depots', depots, d => d.name + (d.allowedForTaxi ? ' · 已授权' : ' · 未授权'));
+  options('platforms', platforms, p => [p.stationName, p.name].filter(Boolean).join(' · '));
+  return '已加载 ' + depots.length + ' 个车厂和 ' + platforms.length + ' 个站台';
+});
+function clearSidings() { sidings = []; $('sidings').replaceChildren(); }
+$('dimension').addEventListener('input', () => {
+  clearSidings();
+  for (const id of ['depots', 'platforms', 'orders', 'orderRows', 'riders']) $(id).replaceChildren();
+  for (const id of ['depotId', 'sidingId', 'pickupPlatformId', 'dropoffPlatformId', 'orderId']) $(id).value = '';
+  $('orderSummary').textContent = '维度已更改，请重新查询订单。';
+});
+$('depotId').addEventListener('input', () => {
+  clearSidings();
+  $('sidingId').value = '';
+});
+$('loadSidings').onclick = action(async () => {
+  const depotId = value('depotId'), dimension = value('dimension');
+  if (!depotId) throw new Error('请先选择车厂。');
+  const items = await catalog('sidings', { depotId }, dimension);
+  if (depotId !== value('depotId') || dimension !== value('dimension')) return '车厂或维度已更改，请重新加载';
+  sidings = items;
+  options('sidings', sidings, s => s.name);
+  if (sidings.length === 1) $('sidingId').value = sidings[0].id;
+  return '已加载 ' + sidings.length + ' 条车厂轨道';
+});
+$('copyCars').onclick = action(() => {
+  const cars = sidings.find(item => item.id === value('sidingId'))?.vehicleCars;
+  if (!cars?.length) throw new Error('所选轨道没有已配置的车型，请填写编组 JSON。');
+  $('vehicleCars').value = pretty(cars);
+  return '已填入轨道车型，请检查尺寸和容量';
+});
+function newOrder() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  $('createOrder').value = 'debug-' + Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+$('newOrder').onclick = newOrder;
+newOrder();
+function showOrder(data, dimension) {
+  $('response').textContent = pretty(data);
+  if (dimension !== value('dimension')) return;
+  $('orderSummary').textContent = [
+    data.orderId, data.phase, data.plate, data.routeName,
+    data.onboardCount !== undefined ? '在车 ' + data.onboardCount + ' / ' + data.capacity : '',
+    data.speedKmh != null ? '速度 ' + Number(data.speedKmh).toFixed(1) + ' km/h' : '',
+    data.etaPickupSeconds != null ? '预计到上车点 ' + data.etaPickupSeconds + ' 秒' : '',
+    data.etaDropoffSeconds != null ? '预计到下车点 ' + data.etaDropoffSeconds + ' 秒' : '',
+    data.doorsOpen != null ? (data.doorsOpen ? '开门' : '关门') : '',
+    data.doorTarget ? '车门指令 ' + (data.doorTarget === 'open' ? '开门' : '关门') : '',
+    data.error
+  ].filter(Boolean).join(' · ');
+  $('riders').replaceChildren(...(data.passengers || []).map(rider => {
+    const item = document.createElement('li');
+    item.textContent = rider.uuid + ' · 车厢索引 ' + rider.car + (rider.driver ? ' · 司机' : '');
+    return item;
+  }));
+}
+$('createForm').addEventListener('submit', event => {
+  event.preventDefault();
+  void action(async () => {
+    const vehicleCars = JSON.parse(value('vehicleCars'));
+    if (!Array.isArray(vehicleCars) || !vehicleCars.length || vehicleCars.some(car => !car?.vehicleId || car.vehicleId === '填写实际车型ID')) {
+      throw new Error('请填写包含实际车型 ID 的编组 JSON。');
+    }
+    const params = { orderId: value('createOrder'), vehicleCars };
+    for (const id of ['depotId', 'sidingId', 'pickupPlatformId', 'dropoffPlatformId']) params[id] = value(id);
+    for (const id of ['passengerCount', 'maxSpeedKmh', 'accelerationMps2', 'decelerationMps2']) params[id] = $(id).valueAsNumber;
+    if (value('routeName')) params.routeName = value('routeName');
+    const dimension = value('dimension');
+    const { data } = await command('taxi.create', params, dimension);
+    if (dimension === value('dimension')) $('orderId').value = data.orderId;
+    showOrder(data, dimension);
+    return '订单已受理，可查询状态或查看发车事件';
+  })();
+});
+$('listOrders').onclick = action(async () => {
+  const dimension = value('dimension');
+  const { data } = await command('taxi.list', {}, dimension);
+  if (dimension !== value('dimension')) return '维度已更改，请重新查询';
+  options('orders', data.rides.map(ride => ({ id: ride.orderId, phase: ride.phase })), ride => ride.phase);
+  $('orderRows').replaceChildren(...data.rides.map(ride => {
+    const row = document.createElement('tr');
+    const select = document.createElement('button');
+    select.textContent = ride.orderId;
+    select.onclick = () => { $('orderId').value = ride.orderId; showOrder(ride, dimension); };
+    row.insertCell().append(select);
+    row.insertCell().textContent = ride.phase;
+    row.insertCell().textContent = ride.plate || '—';
+    return row;
+  }));
+  return '已加载 ' + data.rides.length + ' 个订单';
+});
+function orderAction(type, extra = {}) {
+  return action(async () => {
+    const orderId = value('orderId'), dimension = value('dimension');
+    if (!orderId) throw new Error('请输入或选择订单号。');
+    if (type === 'taxi.destroy' && !confirm('销毁 ' + dimension + ' 的订单车辆 ' + orderId + '？')) return '已取消销毁';
+    const { data } = await command(type, { orderId, ...extra }, dimension);
+    showOrder(data, dimension);
+  });
+}
+$('status').onclick = orderAction('taxi.status');
+$('passengers').onclick = orderAction('taxi.passengers');
+$('openDoors').onclick = orderAction('taxi.doors', { state: 'open' });
+$('closeDoors').onclick = orderAction('taxi.doors', { state: 'closed' });
+$('destroy').onclick = orderAction('taxi.destroy');
+for (const button of $('catalogButtons').querySelectorAll('button')) {
+  button.onclick = action(async () => {
+    const dimension = value('dimension');
+    const items = await catalog(button.dataset.kind, {}, dimension);
+    $('catalog').textContent = pretty({ dimension, kind: button.dataset.kind, total: items.length, items });
+    return '已加载 ' + items.length + ' 条地图记录';
+  });
+}
+</script>
+</body>
+</html>

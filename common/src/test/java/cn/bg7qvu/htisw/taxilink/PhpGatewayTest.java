@@ -50,6 +50,11 @@ class PhpGatewayTest {
             URI base = URI.create("http://127.0.0.1:" + httpPort);
             try {
                 awaitHealth(http, base, false, server);
+                var page = http.send(HttpRequest.newBuilder(base).GET().build(), HttpResponse.BodyHandlers.ofString());
+                assertEquals(200, page.statusCode());
+                assertTrue(page.headers().firstValue("Content-Type").orElse("").startsWith("text/html"));
+                assertTrue(page.body().contains("TAXILink 调试台"));
+                assertFalse(page.body().contains("local-debug-integration-only"));
                 assertEquals(401, http.send(HttpRequest.newBuilder(base.resolve("/health")).GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
                 assertEquals(503, post(http, base, "{\"type\":\"mtr.depots\",\"params\":{}}").statusCode());
                 link.tick(); awaitHealth(http, base, true, server);

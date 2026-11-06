@@ -112,6 +112,20 @@ final class TaxilinkGateway
 
     public function onHttp(TcpConnection $connection, Request $request): void
     {
+        if ($request->method() === 'GET' && $request->path() === '/') {
+            $html = @file_get_contents(__DIR__ . '/taxilink-debug.html');
+            if ($html === false) {
+                $this->reply($connection, 503, ['error' => 'DEBUG_PAGE_MISSING']);
+                return;
+            }
+            $connection->close(new Response(200, [
+                'Content-Type' => 'text/html; charset=utf-8',
+                'Cache-Control' => 'no-store',
+                'Content-Security-Policy' => "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
+                'Connection' => 'close',
+            ], $html));
+            return;
+        }
         if (!hash_equals('Bearer ' . $this->debugToken, (string) $request->header('authorization'))) {
             $this->reply($connection, 401, ['error' => 'UNAUTHORIZED']); return;
         }

@@ -24,6 +24,14 @@ Linux 可用 `export` 设置相同环境变量，再 `php start.php start`（或
 
 Minecraft 的 config/taxilink.json 设置 endpoint 为上面的 ws 地址、`serverId=taxilink-01`、`allowInsecureLocalhost=true`，Minecraft 进程环境设置相同 TAXILINK_TOKEN。跨机器部署用反向代理 WSS，并关闭 allowInsecureLocalhost；代理须传递 Authorization、X-TAXILink-Server、Upgrade 和 Connection 头。可通过 TAXILINK_WS_LISTEN/TAXILINK_HTTP_LISTEN 修改监听地址；调试 HTTP 默认仅回环，不要直接暴露公网。
 
+## 浏览器调试台
+
+启动网关后，打开 [http://127.0.0.1:8789/](http://127.0.0.1:8789/)，输入 `TAXILINK_DEBUG_TOKEN` 并连接。连接栏会显示 Minecraft 模组是否在线，令牌保存在当前页面的内存中。
+
+选择维度，加载车厂和站台，再加载所选车厂的轨道。可以采用轨道上已配置的车型，也可以编辑编组 JSON。填写人数和行车参数后发送订单。受理后，订单号会自动填入查询区，可查询状态、查看乘客、开关门和销毁车辆。页面也提供订单列表、地图目录和实时事件。
+
+发单超时时，先用原订单号查询。重试同一笔订单时保留原订单号和参数。
+
 ## HTTP 调试
 
 所有接口都要求 `Authorization: Bearer <TAXILINK_DEBUG_TOKEN>`。
@@ -44,7 +52,7 @@ Invoke-RestMethod http://127.0.0.1:8789/command -Method Post -Headers $headers -
 
 ## 并入已有 webman
 
-1. 确认 PHP >=8.1、Workerman >=5.1；把 `app/process/TaxilinkGateway.php` 复制到 webman 的同名位置。
+1. 确认 PHP >=8.1、Workerman >=5.1。将 `app/process/TaxilinkGateway.php` 和同目录的 `taxilink-debug.html` 一起复制到 webman 的 `app/process` 目录。
 2. 把上一级 `TaxilinkProtocol.php` 复制到 webman 项目根目录；把 `config/process.taxilink.php` 复制到 webman 的 config。
 3. 在现有 `config/process.php` 的返回数组中合并 `(require __DIR__ . '/process.taxilink.php')`。不要另建普通 HTTP controller 去读取处理器内存。
 4. 设置同样的环境变量，正常启动 webman。调试 HTTP 端口仍是 8789，业务 webman HTTP 端口不受影响。
