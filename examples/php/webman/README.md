@@ -6,7 +6,18 @@
 
 ## 独立启动（最少步骤）
 
-PHP 8.1+、Composer。在仓库 `examples/php` 目录执行 `composer install`，设置环境变量后运行：
+PHP 8.1+、Composer。首次使用时，在 `examples/php` 目录执行 `composer install`。Windows 用户可在同一个 CMD 窗口运行：
+
+```cmd
+call init.bat
+php start.php start
+```
+
+`init.bat` 优先保留当前环境变量，其次读取脚本旁的 `.env.taxilink-mod` 和 `.env.taxilink-debug`，只为缺失项生成随机令牌。Minecraft 进程使用 `TAXILINK_TOKEN`，网页使用 `TAXILINK_DEBUG_TOKEN`。从同一 CMD 启动 Minecraft 启动器或服务端可继承变量。若用其他方式启动，请为对应进程设置相同的模组令牌。
+
+若调试令牌由脚本生成，可在启动网关前用 `type .env.taxilink-debug` 查看并复制到网页。
+
+也可用 PowerShell 手动设置环境变量：
 
 ```powershell
 $env:TAXILINK_SERVER_ID = 'taxilink-01'
