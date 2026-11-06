@@ -7,7 +7,7 @@ Minecraft 模组作为 WebSocket **客户端**主动连接 PHP 的 WebSocket 服
 HTTP 握手头：
 
 ```http
-Authorization: Bearer <TAXILINK_TOKEN 环境变量>
+Authorization: Bearer <模组令牌>
 X-TAXILink-Server: taxilink-01
 ```
 

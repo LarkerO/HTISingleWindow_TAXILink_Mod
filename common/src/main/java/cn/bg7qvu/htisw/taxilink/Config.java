@@ -1,5 +1,6 @@
 package cn.bg7qvu.htisw.taxilink;
 
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.*;
 import java.util.*;
@@ -8,6 +9,7 @@ public final class Config {
     public boolean enabled = false;
     public String endpoint = "wss://example.com/taxilink";
     public String tokenEnvironment = "TAXILINK_TOKEN";
+    public String tokenFile;
     public String serverId = "taxilink-01";
     public boolean allowInsecureLocalhost = false;
     public int telemetrySeconds = 2;
@@ -17,7 +19,25 @@ public final class Config {
     public int maxPendingCommands = 128;
     /** dimension (MTR namespace/path) -> explicitly reserved depot IDs */
     public Map<String, List<String>> allowedDepots = new LinkedHashMap<>();
+    private transient Path configDirectory;
+
     public String token() {
+        if (tokenFile != null && !tokenFile.isBlank()) {
+            Path path = Path.of(tokenFile);
+            if (!path.isAbsolute()) {
+                if (configDirectory == null) throw new IllegalStateException("Load TAXILink config before using a relative tokenFile");
+                path = configDirectory.resolve(path).normalize();
+            }
+            try {
+                String value = Files.readString(path).strip();
+                if (!value.matches("[!-~]+")) {
+                    throw new IllegalArgumentException("TAXILink tokenFile must contain one nonempty ASCII token: " + path);
+                }
+                return value;
+            } catch (IOException e) {
+                throw new IllegalArgumentException("Cannot read TAXILink tokenFile: " + path, e);
+            }
+        }
         String value = System.getenv(tokenEnvironment);
         if (value == null || value.isBlank()) throw new IllegalArgumentException("Set environment variable " + tokenEnvironment);
         return value;
@@ -41,6 +61,7 @@ public final class Config {
         }
         Config config = Json.GSON.fromJson(Files.readString(path), Config.class);
         if (config == null || config.allowedDepots == null) throw new IllegalArgumentException("Invalid config");
+        config.configDirectory = path.toAbsolutePath().getParent();
         if (config.enabled) config.validate();
         return config;
     }

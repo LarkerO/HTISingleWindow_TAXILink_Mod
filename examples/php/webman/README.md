@@ -13,7 +13,7 @@ call init.bat
 php start.php start
 ```
 
-`init.bat` 优先保留当前环境变量，其次读取脚本旁的 `.env.taxilink-mod` 和 `.env.taxilink-debug`，只为缺失项生成随机令牌。Minecraft 进程使用 `TAXILINK_TOKEN`，网页使用 `TAXILINK_DEBUG_TOKEN`。从同一 CMD 启动 Minecraft 启动器或服务端可继承变量。若用其他方式启动，请为对应进程设置相同的模组令牌。
+`init.bat` 优先保留当前环境变量，其次读取脚本旁的 `.env.taxilink-mod` 和 `.env.taxilink-debug`，只为缺失项生成随机令牌。网页使用调试令牌。Minecraft 0.2.2 起可在 `config/taxilink.json` 中把 `tokenFile` 指向 `.env.taxilink-mod` 的绝对路径。Windows 路径可用正斜杠，或在 JSON 中写成双反斜杠。若网关使用手动设置的模组令牌，令牌文件内容也要与之匹配。
 
 若调试令牌由脚本生成，可在启动网关前用 `type .env.taxilink-debug` 查看并复制到网页。
 
@@ -33,7 +33,7 @@ Linux 可用 `export` 设置相同环境变量，再 `php start.php start`（或
 - Minecraft WebSocket：`ws://127.0.0.1:8788/taxilink`
 - 调试 HTTP API：`http://127.0.0.1:8789`
 
-Minecraft 的 config/taxilink.json 设置 endpoint 为上面的 ws 地址、`serverId=taxilink-01`、`allowInsecureLocalhost=true`，Minecraft 进程环境设置相同 TAXILINK_TOKEN。跨机器部署用反向代理 WSS，并关闭 allowInsecureLocalhost；代理须传递 Authorization、X-TAXILink-Server、Upgrade 和 Connection 头。可通过 TAXILINK_WS_LISTEN/TAXILINK_HTTP_LISTEN 修改监听地址；调试 HTTP 默认仅回环，不要直接暴露公网。
+Minecraft 的 `config/taxilink.json` 将 endpoint 设为上面的 ws 地址，并设置 `serverId=taxilink-01` 和 `allowInsecureLocalhost=true`。跨机器部署用反向代理 WSS，并关闭 allowInsecureLocalhost。代理须传递 Authorization、X-TAXILink-Server、Upgrade 和 Connection 头。可通过 TAXILINK_WS_LISTEN 和 TAXILINK_HTTP_LISTEN 修改监听地址。调试 HTTP 默认仅监听回环地址。
 
 ## 浏览器调试台
 

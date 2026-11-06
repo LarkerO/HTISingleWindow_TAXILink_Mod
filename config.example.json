@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "endpoint": "wss://dispatch.example.com/taxilink",
-  "tokenEnvironment": "TAXILINK_TOKEN",
+  "tokenFile": "taxilink.token",
   "serverId": "taxilink-01",
   "allowInsecureLocalhost": false,
   "telemetrySeconds": 2,

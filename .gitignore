@@ -11,6 +11,7 @@
 # Local server configuration, state and credentials
 run/
 config/taxilink.json
+taxilink.token
 taxilink-state/
 *.log
 .env

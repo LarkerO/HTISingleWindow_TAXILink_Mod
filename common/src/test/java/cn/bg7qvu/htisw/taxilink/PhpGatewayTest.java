@@ -33,9 +33,12 @@ class PhpGatewayTest {
         builder.environment().put("TAXILINK_HTTP_LISTEN", "http://127.0.0.1:" + httpPort);
         builder.redirectErrorStream(true).redirectOutput(temp.resolve("gateway.log").toFile());
         Process server = builder.start();
-        Config cfg = new Config(); cfg.serverId = "gateway-test";
-        cfg.endpoint = "ws://127.0.0.1:" + wsPort + "/taxilink"; cfg.allowInsecureLocalhost = true;
-        cfg.tokenEnvironment = "TAXILINK_TEST_MOD_TOKEN";
+        Path configPath = temp.resolve("config/taxilink.json");
+        Json.write(configPath, data("enabled", true, "serverId", "gateway-test",
+            "endpoint", "ws://127.0.0.1:" + wsPort + "/taxilink", "allowInsecureLocalhost", true,
+            "tokenEnvironment", "TAXILINK_TEST_UNUSED_ENV", "tokenFile", "taxilink.token"));
+        Files.writeString(configPath.resolveSibling("taxilink.token"), token + System.lineSeparator());
+        Config cfg = Config.load(configPath);
         AtomicReference<WebSocketLink> reference = new AtomicReference<>();
         Simulator sim = new Simulator("minecraft/overworld", new String[]{"minecraft/overworld"}, temp.resolve("mtr"), false);
         Depot depot = new Depot(TransportMode.TRAIN, sim); depot.setName("PHP联调车厂"); sim.depots.add(depot);
