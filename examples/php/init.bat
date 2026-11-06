@@ -3,6 +3,25 @@ setlocal DisableDelayedExpansion
 set "newModToken="
 set "newDebugToken="
 
+if not exist "%~dp0vendor\autoload.php" (
+    where.exe composer >nul 2>&1
+    if errorlevel 1 (
+        echo PHP dependencies are missing. Install Composer, then run init.bat again. 1>&2
+        exit /b 1
+    )
+    pushd "%~dp0" || exit /b 1
+    call composer install --no-interaction --prefer-dist
+    if errorlevel 1 (
+        popd
+        exit /b 1
+    )
+    popd
+    if not exist "%~dp0vendor\autoload.php" (
+        echo Composer did not create vendor\autoload.php. 1>&2
+        exit /b 1
+    )
+)
+
 if not defined TAXILINK_TOKEN (
     call :loadToken "%~dp0.env.taxilink-mod" newModToken
     if errorlevel 1 exit /b 1

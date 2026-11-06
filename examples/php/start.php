@@ -3,7 +3,12 @@ declare(strict_types=1);
 
 // Standalone runner for the same handler used by the webman custom process.
 chdir(__DIR__);
-require __DIR__ . '/vendor/autoload.php';
+$autoload = __DIR__ . '/vendor/autoload.php';
+if (!is_file($autoload)) {
+    fwrite(STDERR, "TAXILink PHP dependencies are missing. Run composer install in " . __DIR__ . " and try again.\n");
+    exit(1);
+}
+require $autoload;
 if (!is_dir(__DIR__ . '/runtime')) mkdir(__DIR__ . '/runtime', 0770, true);
 Workerman\Worker::$logFile = __DIR__ . '/runtime/workerman.log';
 Workerman\Worker::$pidFile = __DIR__ . '/runtime/workerman.pid';

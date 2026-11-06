@@ -6,7 +6,7 @@
 
 ## 独立启动（最少步骤）
 
-PHP 8.1+、Composer。首次使用时，在 `examples/php` 目录执行 `composer install`。Windows 用户可在同一个 CMD 窗口运行：
+PHP 8.1+、Composer。每次解压到新的版本目录时，需要在该目录安装 PHP 依赖。Windows 的 `init.bat` 会在缺少依赖时调用 Composer 安装。在同一个 CMD 窗口运行：
 
 ```cmd
 call init.bat
