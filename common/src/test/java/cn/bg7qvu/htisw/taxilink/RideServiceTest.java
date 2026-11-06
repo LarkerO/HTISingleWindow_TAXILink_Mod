@@ -108,22 +108,29 @@ class RideServiceTest {
         assertTrue(sim.routes.isEmpty());
     }
     @Test void generatesDispatchesRespectsCapAndReturnsDespiteTimeSynchronization() throws Exception {
+        long originalPickupDwell = pickup.getDwellTime();
         service.command(sim, "taxi.create", request());
         var tick = Simulator.class.getDeclaredMethod("tick", long.class); tick.setAccessible(true);
         boolean observedActive = false;
+        long firstDoorOpen = -1, firstDoorClose = -1;
         JsonObject status = null;
-        for (int i = 0; i < 5000; i++) {
+        for (int i = 0; i < 6500; i++) {
             tick.invoke(sim, 100L); service.tick(sim, false);
             status = service.command(sim, "taxi.status", data("orderId", "test-order"));
             if (status.get("phase").getAsString().equals("ACTIVE")) {
                 observedActive = true;
                 assertFalse(status.get("position").isJsonNull());
                 assertTrue(status.get("speedKmh").getAsDouble() <= 30.0001, status.toString());
+                if (status.get("doorsOpen").getAsBoolean() && firstDoorOpen < 0) firstDoorOpen = i * 100L;
+                if (!status.get("doorsOpen").getAsBoolean() && firstDoorOpen >= 0 && firstDoorClose < 0) firstDoorClose = i * 100L;
             }
             if (i % 50 == 0) sim.setGameTime(6000, 1200000, true);
             if (status.get("phase").getAsString().equals("COMPLETED")) break;
         }
         assertTrue(observedActive, String.valueOf(status));
+        assertTrue(firstDoorOpen >= 0 && firstDoorClose - firstDoorOpen >= 303_200,
+            "Pickup doors must open automatically and stay open through the animation and five-minute boarding window");
+        assertEquals(originalPickupDwell, pickup.getDwellTime());
         assertEquals("COMPLETED", status.get("phase").getAsString(), status.toString());
         assertTrue(sim.routes.isEmpty()); assertTrue(depot.getRouteIds().isEmpty());
     }
@@ -261,7 +268,7 @@ class RideServiceTest {
         PathData path = new PathData(sim.rails.iterator().next(), 0, 0, 0, pos(0), pos(10));
         PathData.writePathCache(new ObjectArrayList<>(List.of(path)), sim, TransportMode.TRAIN);
         @SuppressWarnings("unchecked") List<PathData> owned = (List<PathData>) MtrAccess.read(siding, "pathSidingToMainRoute");
-        owned.add(path); MtrAccess.capPaths(siding, 25);
+        owned.add(path); MtrAccess.configureRidePaths(siding, 25, pickup.getId());
         assertTrue(owned.getFirst().getSpeedLimitMetersPerMillisecond() <= 25D / 3600);
         assertEquals(80, path.getSpeedLimitKilometersPerHour());
     }

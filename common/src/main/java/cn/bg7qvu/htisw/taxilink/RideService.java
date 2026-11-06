@@ -190,6 +190,7 @@ public final class RideService {
             siding.setMaxManualSpeed(speed / 3600D);
             siding.setAcceleration(acceleration / 1_000_000D); siding.setDeceleration(deceleration / 1_000_000D);
             siding.setDelayedVehicleSpeedIncreasePercentage(0);
+            siding.setDelayedVehicleReduceDwellTimePercentage(0);
             depot.setRepeatInfinitely(false); depot.setUseRealTime(true);
             depot.getRealTimeDepartures().clear(); for (int hour = 0; hour < 24; hour++) depot.setFrequency(hour, 0);
             depot.getRouteIds().clear(); depot.getRouteIds().add(route.getId()); sim.routes.add(route); sim.sync();
@@ -215,7 +216,7 @@ public final class RideService {
                         throw new Fault("ROUTE_GENERATION_FAILED", generation.name());
                     if (generation == Depot.GeneratedStatus.SUCCESSFUL) {
                         siding.clearVehicles();
-                        MtrAccess.capPaths(siding, ride.params.get("maxSpeedKmh").getAsDouble());
+                        MtrAccess.configureRidePaths(siding, ride.params.get("maxSpeedKmh").getAsDouble(), id(ride.params, "pickupPlatformId"));
                         siding.startGeneratingDepartures();
                         long departure = sim.getCurrentMillis() + 1000;
                         depot.getRealTimeDepartures().add(departure);

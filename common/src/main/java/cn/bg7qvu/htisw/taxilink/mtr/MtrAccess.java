@@ -2,12 +2,16 @@ package cn.bg7qvu.htisw.taxilink.mtr;
 
 import org.mtr.core.data.*;
 import org.mtr.core.simulation.Simulator;
+import org.mtr.core.tool.Angle;
 import java.lang.reflect.*;
 import java.nio.file.Path;
 import java.util.*;
 
 /** Version-locked private API boundary for MTR 4.1.0-beta.2. Never bundle MTR. */
 public final class MtrAccess {
+    private static final long PICKUP_BOARDING_MILLIS = 300_000;
+    // MTR waits 1s before opening, animates the doors, then closes 4.2s before departure.
+    private static final long PICKUP_DWELL_MILLIS = PICKUP_BOARDING_MILLIS + 2 * (Vehicle.DOOR_MOVE_TIME + 1_000L);
     private MtrAccess() {}
     public static Object read(Object target, String field) {
         try { return field(target.getClass(), field).get(target); }
@@ -41,17 +45,27 @@ public final class MtrAccess {
         Path depotsPath = (Path) read(read(simulator, "fileLoaderDepots"), "path");
         return depotsPath.toAbsolutePath().getParent().resolve("taxilink-state");
     }
-    /** Per-order copies cap automatic speed and braking lookahead without modifying shared physical rails. */
-    public static void capPaths(Siding siding, double speedKmh) {
+    /** Keep speed and pickup dwell changes on this order's path, away from shared rails and platforms. */
+    public static void configureRidePaths(Siding siding, double speedKmh, long pickupPlatformId) {
         double cap = speedKmh / 3600D;
         for (String name : List.of("pathSidingToMainRoute", "pathMainRoute", "pathMainRouteToSiding")) {
             @SuppressWarnings("unchecked") List<PathData> paths = (List<PathData>) read(siding, name);
-            paths.replaceAll(p -> new LimitedPath(p, cap));
+            paths.replaceAll(p -> p.getSavedRailBaseId() == pickupPlatformId && p.getDwellTime() > 0 && p.getDwellTime() < PICKUP_DWELL_MILLIS
+                ? new LimitedPath(p, cap, PICKUP_DWELL_MILLIS)
+                : new LimitedPath(p, cap));
         }
     }
     private static final class LimitedPath extends PathData {
         private final double cap;
         LimitedPath(PathData p, double cap) { super(p, p.getStartDistance(), p.getEndDistance()); this.cap = cap; }
+        LimitedPath(PathData p, double cap, long dwellMillis) {
+            super((Rail) read(p, "rail"), p.getSavedRailBaseId(), dwellMillis, p.getStopIndex(),
+                p.getStartDistance(), p.getEndDistance(),
+                (Position) read(p, "startPosition"), (Angle) read(p, "startAngle"),
+                (Position) read(p, "endPosition"), (Angle) read(p, "endAngle"));
+            this.speedLimit = p.getSpeedLimitKilometersPerHour();
+            this.cap = cap;
+        }
         @Override public double getSpeedLimitMetersPerMillisecond() { return Math.min(super.getSpeedLimitMetersPerMillisecond(), cap); }
         @Override public long getSpeedLimitKilometersPerHour() { return Math.min(super.getSpeedLimitKilometersPerHour(), (long) (cap * 3600)); }
     }
