@@ -343,6 +343,8 @@ class RideServiceTest {
         for (int i = 0; i < 100 && result == null; i++) result = job.tick();
         assertNotNull(result);
         assertEquals(30, result.get("distanceMeters").getAsDouble(), 0.01);
+        assertTrue(result.get("pickupDistanceMeters").getAsDouble() > 0);
+        assertTrue(result.get("returnDistanceMeters").getAsDouble() > 0);
         assertTrue(result.getAsJsonObject("geometry").getAsJsonArray("points").size() >= 2);
         assertTrue(sim.routes.isEmpty());
         assertTrue(depot.getRouteIds().isEmpty());

@@ -44,9 +44,18 @@ final class RoutePreview {
             leg(sim, pickup, dropoff, 0, altitude, trip), leg(sim, dropoff, siding, 2, altitude, inbound)),
             () -> {
                 JsonObject result = estimate(sim, siding, outbound, trip, cap, acceleration, deceleration, lowSpeed);
+                // Keep the existing passenger distance stable; expose the other legs for dispatch and fees.
+                if (SidingPathFinder.overlappingPaths(trip, inbound)) inbound.removeFirst();
+                result.addProperty("pickupDistanceMeters", pathDistance(outbound));
+                result.addProperty("returnDistanceMeters", pathDistance(inbound));
                 if (p.has("centerRevision")) result.add("centerRevision", p.get("centerRevision").deepCopy());
                 return result;
             });
+    }
+
+    private static double pathDistance(ObjectArrayList<PathData> path) {
+        SidingPathFinder.generatePathDataDistances(path, 0);
+        return round(path.isEmpty() ? 0 : path.getLast().getEndDistance());
     }
 
     private static JsonObject estimate(Simulator sim, Siding siding, ObjectArrayList<PathData> outbound,
