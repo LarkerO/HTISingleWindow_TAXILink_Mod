@@ -6,6 +6,16 @@
 
 ## 构建与安装
 
+### GitHub Actions 自动构建
+
+仓库的 `Build mods` workflow 在代码、构建配置或 workflow 变更的 push / pull request 时运行，也可在 GitHub Actions 页面手动选择 **Run workflow**。纯文档修改不触发自动构建，同一分支或 PR 的新运行会取消旧运行。
+
+CI 使用 Java 21，自动下载固定的 MTR 4.1.0-beta.2 / Minecraft 1.21.1 NeoForge 发行包作为公共编译和测试依赖，并校验 SHA-512，无需上传本地 MTR jar 或配置密钥。执行 `build packageRelease`，运行公共 Java 测试并生成 Fabric、NeoForge 两个平台的模组及交付 ZIP。
+
+构建成功后，在运行页面的 **Artifacts** 下载 `TAXILink-<提交 SHA>`，其中包含双平台 jar、源码 jar 和交付 ZIP；测试报告单独上传。安装时选择对应平台的非 `sources` jar。产物保留 14 天，测试报告保留 7 天；不会自动创建 GitHub Release。CI 不包含需要额外 PHP 环境的可选网关联调，也不代替游戏内加载器与 Mixin 验证。
+
+### 本地构建
+
 在本目录自行放置 `mtr-4.1.0-beta.2.jar` 后执行。参考模组 jar、参考源码、运行状态和构建产物已加入 `.gitignore`，不随仓库分发；Gradle Wrapper jar 仍保留：
 
 ```powershell

@@ -1,0 +1,82 @@
+name: Build mods
+
+on:
+  push:
+    paths:
+      - '**/*.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew*'
+      - 'common/**'
+      - 'fabric/**'
+      - 'neoforge/**'
+      - 'examples/**'
+      - 'config.example.json'
+      - '.github/workflows/build.yml'
+  pull_request:
+    paths:
+      - '**/*.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew*'
+      - 'common/**'
+      - 'fabric/**'
+      - 'neoforge/**'
+      - 'examples/**'
+      - 'config.example.json'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Download pinned MTR dependency
+        shell: bash
+        run: |
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 300 \
+            'https://cdn.modrinth.com/data/XKPAmI6u/versions/9SDO8rYc/MTR-neoforge-4.1.0-beta.2%2B1.21.1.jar' \
+            --output mtr-4.1.0-beta.2.jar
+          echo '95a8bfd933a058b4f290bd51567f8fee3d3b797aadfe2132d1276cecdf5d1987c72d79dba6663e9f3481008ca0e8463777b9e4387f72e36ffee411982a6142ec  mtr-4.1.0-beta.2.jar' | sha512sum --check --strict
+
+      - name: Test and build both loaders
+        run: bash ./gradlew --no-daemon --console=plain build packageRelease
+
+      - name: Upload mods and release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: TAXILink-${{ github.sha }}
+          path: |
+            fabric/build/libs/*.jar
+            neoforge/build/libs/*.jar
+            dist/TAXILink-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ github.sha }}
+          path: |
+            common/build/reports/tests/test/
+            common/build/test-results/test/*.xml
+          if-no-files-found: ignore
+          retention-days: 7
