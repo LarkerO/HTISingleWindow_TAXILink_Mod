@@ -348,20 +348,22 @@ class RideServiceTest {
         assertTrue(depot.getRouteIds().isEmpty());
     }
 
-    @Test void depotAllowlistMigratesAndSupportsLiveWebEditsAndReload() throws Exception {
+    @Test void worldDepotAllowlistSupportsLiveEditsAndRejectsInvalidReloadAtomically() throws Exception {
         var configPath = temp.resolve("config/taxilink.json");
-        var listPath = configPath.resolveSibling("taxilink-depots.json");
+        var worldRoot = temp.resolve("allowlist-test");
+        var listPath = worldRoot.resolve("taxilink-depots.json");
         String depotId = Long.toString(depot.getId());
         Json.write(configPath, data("allowedDepots", Map.of(sim.dimension, List.of(depotId)), "serverId", "test-server"));
-        Config migrated = Config.load(configPath);
-        assertFalse(Json.object(java.nio.file.Files.readString(configPath)).has("allowedDepots"));
+        Config migrated = Config.load(configPath).forWorld(worldRoot);
+        assertFalse(migrated.allows(sim.dimension, depot.getId()));
+        assertFalse(java.nio.file.Files.exists(configPath.resolveSibling("taxilink-depots.json")));
+        RideService web = new RideService(migrated, worldRoot, sim.dimension, ignored -> {});
+        web.command(sim, "taxi.depots.add", data("depotId", depotId));
         assertTrue(migrated.allows(sim.dimension, depot.getId()));
-        RideService web = new RideService(migrated, temp.resolve("allowlist-test"), sim.dimension, ignored -> {});
+        assertTrue(Config.load(configPath).forWorld(worldRoot).allows(sim.dimension, depot.getId()));
         web.command(sim, "taxi.depots.remove", data("depotId", depotId));
         assertFalse(migrated.allows(sim.dimension, depot.getId()));
-        assertFalse(Config.load(configPath).allows(sim.dimension, depot.getId()));
         web.command(sim, "taxi.depots.add", data("depotId", depotId));
-        assertTrue(Config.load(configPath).allows(sim.dimension, depot.getId()));
         java.nio.file.Files.writeString(listPath, "{ invalid json");
         assertEquals("ALLOWLIST_IO_ERROR", assertThrows(Fault.class, () -> web.command(sim, "taxi.depots.reload", data())).code);
         assertTrue(migrated.allows(sim.dimension, depot.getId()));

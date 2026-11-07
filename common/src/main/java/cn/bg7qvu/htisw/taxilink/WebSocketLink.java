@@ -79,7 +79,7 @@ public final class WebSocketLink implements AutoCloseable {
             if (closed) { ws.abort(); return; }
             socket = ws; failures = 0; lastPong = lastPing = System.currentTimeMillis();
             send(data("type", "subscribe", "topics", new String[]{"taxilink.commands." + config.serverId},
-                "capabilities", new String[]{"taxi.quote", "taxi.geometry", "taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers", "mtr.dimensions", "mtr.depots", "mtr.sidings", "mtr.routes", "mtr.stations", "mtr.platforms", "taxi.depots.list", "taxi.depots.add", "taxi.depots.remove", "taxi.depots.reload"}));
+                "capabilities", new String[]{"taxi.centers.list", "taxi.centers.put", "taxi.centers.remove", "taxi.centers.reload", "taxi.logs", "taxi.control", "taxi.quote", "taxi.geometry", "taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers", "mtr.dimensions", "mtr.depots", "mtr.sidings", "mtr.routes", "mtr.stations", "mtr.platforms", "taxi.depots.list", "taxi.depots.add", "taxi.depots.remove", "taxi.depots.reload"}));
             ws.request(1);
         }
         @Override public CompletionStage<?> onText(WebSocket ws, CharSequence fragment, boolean last) {

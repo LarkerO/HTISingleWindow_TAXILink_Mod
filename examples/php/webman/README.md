@@ -43,7 +43,7 @@ Minecraft 的 `config/taxilink.json` 将 endpoint 设为上面的 ws 地址，�
 
 采用轨道车型时，网页会把容量为零的 `minecart` 按每节 1 人预填。其他车型请按实际载客人数填写每节的 `capacity`。预约人数不能超过编组总容量。
 
-从 0.3.0 起，可在「车厂白名单」中查看地图上的车厂，并对专用单轨车厂添加或移除授权。网页操作会保存到游戏实例的 `config/taxilink-depots.json` 并立即生效。手动编辑文件后，可从网页重新读取，或在游戏里用管理员权限执行 `/taxilink reload-depots`。
+从 0.3.0 起，可在「车厂白名单」中查看地图上的车厂，并对专用单轨车厂添加或移除授权。0.5.0 起网页操作保存到当前存档及维度的 `taxilink-state/taxilink-depots.json`，并立即生效。手动编辑文件后，可从网页重新读取，或在游戏里用管理员权限执行 `/taxilink reload-depots`。
 
 发单超时时，先用原订单号查询。重试同一笔订单时保留原订单号和参数。
 
@@ -83,3 +83,6 @@ php tests/protocol.php
 ```
 
 项目的可选 `PhpGatewayTest` 会启动本处理器，验证 SM2 握手与双向签名、重复包拒绝、实际 MTR 目录查询、签名业务请求和报价绑定。设置 `TAXILINK_TEST_PHP` 和 `TAXILINK_TEST_OPENSSL` 为对应可执行文件路径后，从仓库根运行 `gradlew.bat test`。未配置 PHP 时该测试会跳过。
+
+
+0.5.0 新增车辆中心、候补队列、中文行程状态、上下车历史、订单动态及远程控速，详见 [车辆中心与运营接口](../../../docs/VEHICLE_CENTERS.md)。升级后使用新包内 PHP 代码，保留自己的 PEM、调试令牌和 vendor；不要将旧网关代码覆盖新版本。

@@ -53,6 +53,12 @@ public final class MtrAccess {
         }
     }
 
+    public static void controlSpeed(Vehicle v, double kmh) {
+        for (PathData path : v.vehicleExtraData.immutablePath) {
+            if (!(path instanceof LimitedPath limited)) throw new IllegalStateException("Vehicle lacks TAXILink speed paths");
+            limited.controlCap = kmh / 3600D;
+        }
+    }
     public static void releasePickup(Vehicle vehicle, PathData pickup) {
         try {
             field(Vehicle.class, "elapsedDwellTime").setLong(vehicle, pickup.getDwellTime());
@@ -62,6 +68,7 @@ public final class MtrAccess {
     }
     private static final class LimitedPath extends PathData {
         private final double cap;
+        private volatile double controlCap = Double.POSITIVE_INFINITY;
         LimitedPath(PathData p, double cap) { super(p, p.getStartDistance(), p.getEndDistance()); this.cap = cap; }
         LimitedPath(PathData p, double cap, long dwellMillis) {
             super((Rail) read(p, "rail"), p.getSavedRailBaseId(), dwellMillis, p.getStopIndex(),
@@ -71,7 +78,7 @@ public final class MtrAccess {
             this.speedLimit = p.getSpeedLimitKilometersPerHour();
             this.cap = cap;
         }
-        @Override public double getSpeedLimitMetersPerMillisecond() { return Math.min(super.getSpeedLimitMetersPerMillisecond(), cap); }
-        @Override public long getSpeedLimitKilometersPerHour() { return Math.min(super.getSpeedLimitKilometersPerHour(), (long) (cap * 3600)); }
+        @Override public double getSpeedLimitMetersPerMillisecond() { return Math.min(super.getSpeedLimitMetersPerMillisecond(), Math.min(cap, controlCap)); }
+        @Override public long getSpeedLimitKilometersPerHour() { return Math.min(super.getSpeedLimitKilometersPerHour(), (long) (Math.min(cap, controlCap) * 3600)); }
     }
 }

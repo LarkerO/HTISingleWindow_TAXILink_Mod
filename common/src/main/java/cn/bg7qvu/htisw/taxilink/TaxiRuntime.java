@@ -23,14 +23,19 @@ public final class TaxiRuntime implements AutoCloseable {
     private static final class Context {
         final Simulator simulator;
         final RideService rides;
+        final Config config;
         final AtomicBoolean enqueued = new AtomicBoolean();
         final Queue<JsonObject> commands = new ConcurrentLinkedQueue<>();
         final ArrayDeque<PendingQuote> quotes = new ArrayDeque<>();
         long lastTelemetry;
-        Context(Simulator simulator, RideService rides) { this.simulator = simulator; this.rides = rides; }
+        Context(Simulator simulator, RideService rides, Config config) { this.simulator = simulator; this.rides = rides; this.config = config; }
     }
     public TaxiRuntime(Config config, Path state) { this.config = config; this.state = state; link = new WebSocketLink(config, this::receive); }
-    int reloadDepots() throws IOException { return config.depotAllowlist.reload(); }
+    int reloadDepots() throws IOException {
+        int count = 0;
+        for (Context c : contexts.values()) count += c.config.depotAllowlist.reload();
+        return count;
+    }
     public void start() throws ReflectiveOperationException {
         MtrAccess.verify();
         timer.scheduleWithFixedDelay(this::pulse, 0, 250, TimeUnit.MILLISECONDS);
@@ -39,10 +44,14 @@ public final class TaxiRuntime implements AutoCloseable {
     private void pulse() {
         if (closed) return;
         try {
+            PlayerNames.refresh();
             for (Simulator sim : MtrAccess.simulators()) {
                 Context context = contexts.computeIfAbsent(sim.dimension, d -> {
                     Path stateRoot = state == null ? MtrAccess.integratedStateRoot(sim) : state;
-                    return new Context(sim, new RideService(config, stateRoot, d, link::send));
+                    try {
+                        Config local = config.forWorld(stateRoot);
+                        return new Context(sim, new RideService(local, stateRoot, d, link::send), local);
+                    } catch (IOException e) { throw new IllegalStateException("Cannot load world TAXILink data", e); }
                 });
                 if (context.enqueued.compareAndSet(false, true)) sim.run(() -> process(context));
             }
@@ -62,7 +71,7 @@ public final class TaxiRuntime implements AutoCloseable {
                     JsonObject payload = request.getAsJsonObject("params");
                     if (string(request, "type").equals("taxi.quote")) {
                         if (c.quotes.size() >= 8) throw new Fault("SERVER_BUSY", "Too many pending quotes");
-                        c.quotes.add(new PendingQuote(request, RoutePreview.quote(c.simulator, config, payload), System.nanoTime() + TimeUnit.SECONDS.toNanos(12)));
+                        c.quotes.add(new PendingQuote(request, RoutePreview.quote(c.simulator, c.config, c.rides.resolveQuote(c.simulator, payload)), System.nanoTime() + TimeUnit.SECONDS.toNanos(12)));
                         continue;
                     }
                     JsonObject result = c.rides.command(c.simulator, string(request, "type"), payload);
@@ -101,7 +110,7 @@ public final class TaxiRuntime implements AutoCloseable {
                 link.send(data("type", "response", "requestId", request.get("requestId").getAsString(), "ok", true, "data", data("dimensions", dimensions)));
                 return;
             }
-            if (!Set.of("taxi.quote", "taxi.geometry", "taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers").contains(type)
+            if (!Set.of("taxi.centers.list", "taxi.centers.put", "taxi.centers.remove", "taxi.centers.reload", "taxi.logs", "taxi.control", "taxi.quote", "taxi.geometry", "taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers").contains(type)
                 && !MtrCatalog.COMMANDS.contains(type) && !RideService.DEPOT_COMMANDS.contains(type)) throw new Fault("UNKNOWN_COMMAND", type);
             String dimension = string(request, "dimension");
             Context context = contexts.get(dimension);

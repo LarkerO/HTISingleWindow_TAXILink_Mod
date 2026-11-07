@@ -7,6 +7,7 @@ function check(bool $condition, string $message): void {
 }
 $protocol = new TaxilinkProtocol('test-server');
 foreach (['mtr.dimensions', 'mtr.depots', 'mtr.sidings', 'mtr.routes', 'mtr.stations', 'mtr.platforms',
+    'taxi.centers.list', 'taxi.centers.put', 'taxi.centers.remove', 'taxi.centers.reload', 'taxi.logs', 'taxi.control',
     'taxi.depots.list', 'taxi.depots.add', 'taxi.depots.remove', 'taxi.depots.reload'] as $type) {
     $message = json_decode($protocol->command($type), true, 64, JSON_THROW_ON_ERROR);
     check($message['type'] === $type && $message['v'] === 1, 'Command encoding');
@@ -18,4 +19,8 @@ try { $protocol->command('mtr.platforms', ['stationId' => 123]); throw new Runti
 catch (InvalidArgumentException $expected) {}
 check(TaxilinkProtocol::authenticate('Bearer test-token', 's', 's', 'test-token'), 'Valid auth');
 check(!TaxilinkProtocol::authenticate('Bearer bad', 's', 's', 'test-token'), 'Invalid auth');
+foreach ([true => 'open', false => 'closed'] as $open => $state) {
+    $doors = json_decode($protocol->doors('order-test', (bool) $open), true, 64, JSON_THROW_ON_ERROR);
+    check($doors['type'] === 'taxi.doors' && $doors['params']['state'] === $state, 'Door helper arguments');
+}
 echo "PHP protocol checks passed\n";

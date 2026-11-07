@@ -110,7 +110,8 @@ final class TaxilinkGateway
                     try {
                         $message['data']['fare'] = TaxiFare::estimate($message['data'], $entry['fareRules'], $entry['quotedAt']);
                         $quoteId = bin2hex(random_bytes(16));
-                        $this->quotes[$quoteId] = ['fingerprint' => $entry['fingerprint'], 'expires' => time() + 300];
+                        $this->quotes[$quoteId] = ['fingerprint' => $entry['fingerprint'], 'expires' => time() + 300,
+                            'centerRevision' => $message['data']['centerRevision'] ?? null];
                         if (count($this->quotes) > 512) array_shift($this->quotes);
                         $message['data']['quoteId'] = $quoteId;
                         $message['data']['quoteExpiresAt'] = $this->quotes[$quoteId]['expires'] * 1000;
@@ -182,17 +183,19 @@ final class TaxilinkGateway
             if (!is_string($dimension) || !is_string($id) || trim($id) === '' || strlen($id) > 256) throw new \InvalidArgumentException('Invalid dimension/requestId');
             if (isset($this->pending[$id])) { $this->reply($connection, 409, ['error' => 'REQUEST_ID_PENDING']); return; }
             $params = $input['params'] ?? [];
-            if ($signed && !in_array($input['type'], ['taxi.quote', 'taxi.create', 'taxi.status', 'taxi.geometry'], true)) {
+            if ($signed && !in_array($input['type'], ['taxi.quote', 'taxi.create', 'taxi.status', 'taxi.geometry',
+                'taxi.passengers', 'taxi.logs', 'taxi.depart', 'taxi.doors', 'taxi.destroy', 'taxi.control'], true)) {
                 $this->reply($connection, 403, ['error' => 'BUSINESS_COMMAND_NOT_ALLOWED']); return;
             }
             $quoteId = $params['quoteId'] ?? null;
-            unset($params['quoteId']);
+            unset($params['quoteId'], $params['centerRevision']);
             $fingerprint = self::fingerprint($dimension, $params);
             if ($input['type'] === 'taxi.create' && ($signed || $this->sm2 !== null)) {
                 $quote = is_string($quoteId) ? ($this->quotes[$quoteId] ?? null) : null;
                 if ($quote === null || $quote['expires'] <= time() || !hash_equals($quote['fingerprint'], $fingerprint)) {
                     $this->reply($connection, 409, ['error' => 'QUOTE_REQUIRED']); return;
                 }
+                if ($quote['centerRevision'] !== null) $params['centerRevision'] = $quote['centerRevision'];
             }
             $fareRules = null;
             $quotedAt = null;

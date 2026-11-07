@@ -55,12 +55,28 @@ summary { cursor: pointer; }
     <div class="actions"><button id="loadWhitelist">查看车厂白名单</button><button id="reloadWhitelist">重新读取白名单文件</button></div>
     <div class="scroll"><table><thead><tr><th>车厂</th><th>车厂 ID</th><th>停车轨道</th><th>授权</th></tr></thead><tbody id="whitelistRows"></tbody></table></div>
   </section>
+  <section class="wide">
+    <h2>车辆中心</h2>
+    <p class="muted">一个中心可管理多个已授权的专用车厂及多条接送路线。车厂忙时按顺序候补，默认两分钟超时取消。</p>
+    <div class="fields">
+      <label>中心 ID<input id="editCenterId" placeholder="central"></label>
+      <label>中心配置 JSON<textarea id="centerJson" rows="6" spellcheck="false">{
+  "name": "城区车辆中心", "depotIds": ["填写车厂ID"],
+  "routes": []
+}</textarea></label>
+    </div>
+    <div class="actions"><button id="loadCenters">读取车辆中心</button><button id="saveCenter">保存中心</button><button id="removeCenter" class="danger">删除中心</button><button id="reloadCenters">重新导入中心文件</button></div>
+    <div id="centerRows" class="scroll"></div>
+    <p class="muted">路线格式：{"id":"airport","name":"机场线","pickupPlatformId":"站台ID","dropoffPlatformId":"站台ID"}；也可留空 routes，在发单时选择站台。</p>
+  </section>
   <section>
     <h2>测试发单</h2>
     <p class="muted">可粘贴 ID，或加载地图数据后从建议中选取。发单受理后，可在右侧查询寻路和发车状态。</p>
     <div class="actions"><button id="loadMap">加载车厂和站台</button><button id="loadSidings">加载所选车厂轨道</button></div>
     <form id="createForm">
       <div class="fields">
+        <label>车辆中心（可选）<input id="centerId" list="centers"><datalist id="centers"></datalist></label>
+        <label>中心路线 ID（可选）<input id="centerRouteId" list="centerRoutes"><datalist id="centerRoutes"></datalist></label>
         <label>订单号<input id="createOrder" required maxlength="256"></label>
         <label>路线名称（可选）<input id="routeName" maxlength="256" placeholder="默认 TAXILink + 车牌"></label>
         <label>车厂 ID<input id="depotId" list="depots" required pattern="-?[1-9][0-9]{0,18}"><datalist id="depots"></datalist></label>
@@ -94,7 +110,16 @@ summary { cursor: pointer; }
       <button id="openDoors">开门</button><button id="closeDoors">关门</button><button id="depart" class="primary">出发</button><button id="destroy" class="danger">销毁订单车辆</button>
     </div>
     <p id="orderSummary" role="status" class="muted">可从订单列表选择，也可直接输入订单号。</p>
+    <div class="actions">
+      <label>远程限速 km/h<input id="controlSpeed" type="number" min="1" max="160" value="15"></label>
+      <button id="setSpeed">应用限速</button><button id="emergency" class="danger">紧急停车</button><button id="resume">恢复自动运行</button>
+      <button id="loadOrderLogs">订单动态</button>
+    </div>
+    <p class="muted">限速保留信号与自动停站；急停后需明确恢复。候补订单可通过销毁按钮取消。</p>
+    <ol id="orderLogs" class="scroll" aria-label="订单动态"></ol>
     <ul id="riders" aria-label="在车乘客"></ul>
+    <h3>上下车记录（最近一次查询，最多 100 条）</h3>
+    <ul id="passengerVisits" class="scroll" aria-label="上下车记录"></ul>
     <div class="scroll"><table><thead><tr><th>订单号</th><th>状态</th><th>车牌</th></tr></thead><tbody id="orderRows"></tbody></table></div>
     <h3>最近一次操作响应</h3><pre id="response" aria-label="最近一次操作响应">等待操作</pre>
   </section>
@@ -102,6 +127,7 @@ summary { cursor: pointer; }
     <h2>路线轨迹</h2>
     <p class="muted">青色为已走过，蓝色为即将行驶。采用 X/Z 俯视坐标。</p>
     <label><input id="trackRoute" type="checkbox" style="display:inline;width:auto"> 跟踪当前订单</label>
+    <label>显示行程段<select id="mapLeg"><option value="all">总轨迹</option><option value="TO_PICKUP">前往上车地</option><option value="ON_TRIP">行程中</option><option value="RETURNING">回库中</option></select></label>
     <canvas id="routeMap" width="1000" height="360" style="width:100%;background:#101820" aria-label="线路轨迹"></canvas>
     <p id="mapStatus" class="muted" role="status"></p>
   </section>
@@ -124,7 +150,9 @@ const $ = id => document.getElementById(id);
 const value = id => $(id).value.trim();
 const pretty = data => JSON.stringify(data, null, 2);
 let token = '', cursor = 0, pollTimer, busy = false, session = 0, sidings = [];
-let quotedInput = '', quoteId = null;
+let quotedInput = '', quoteId = null, centerData = {}, lastGeometry = null;
+const phaseLabel = ride => ride.stageLabel || ride.stage || ride.phase || '';
+const timeLabel = timestamp => timestamp ? new Date(timestamp).toLocaleString() : '—';
 
 function notice(message, error = false) {
   $('notice').textContent = message;
@@ -233,6 +261,15 @@ async function poll(currentSession) {
         $('mapStatus').textContent = error.message;
       }
     }
+    if (value('orderId') && !busy && health.connected) {
+      const orderId=value('orderId'), dimension=value('dimension');
+      try {
+        const {data}=await command('taxi.status',{orderId},dimension);
+        if (currentSession===session && !busy && orderId===value('orderId') && dimension===value('dimension')) {
+          showOrder(data,dimension,true); await refreshOrderLogs(orderId,dimension);
+        }
+      } catch(error) { $('orderSummary').textContent='订单查询失败 · '+error.message; }
+    }
     for (const entry of feed.events) {
       const details = document.createElement('details');
       const title = document.createElement('summary');
@@ -291,7 +328,9 @@ function clearSidings() { sidings = []; $('sidings').replaceChildren(); }
 $('dimension').addEventListener('input', () => {
   clearSidings();
   for (const id of ['depots', 'platforms', 'orders', 'orderRows', 'riders', 'whitelistRows']) $(id).replaceChildren();
-  for (const id of ['depotId', 'sidingId', 'pickupPlatformId', 'dropoffPlatformId', 'orderId']) $(id).value = '';
+  for (const id of ['centerId', 'centerRouteId', 'editCenterId', 'depotId', 'sidingId', 'pickupPlatformId', 'dropoffPlatformId', 'orderId']) $(id).value = '';
+  centerData={}; lastGeometry=null; centerRequirements();
+  for (const id of ['centerRows','orderLogs','centers','centerRoutes','passengerVisits']) $(id).replaceChildren();
   $('orderSummary').textContent = '维度已更改，请重新查询订单。';
 });
 
@@ -372,11 +411,13 @@ function newOrder() {
 }
 $('newOrder').onclick = newOrder;
 newOrder();
-function showOrder(data, dimension) {
-  $('response').textContent = pretty(data);
+function showOrder(data, dimension, quiet = false) {
+  if (!quiet) $('response').textContent = pretty(data);
   if (dimension !== value('dimension')) return;
   $('orderSummary').textContent = [
-    data.orderId, data.phase, data.plate, data.routeName,
+    data.orderId, phaseLabel(data), data.plate, data.routeName,
+    data.queuePosition ? '候补第 ' + data.queuePosition + ' 位 · 截止 ' + timeLabel(data.queuedUntil) : '',
+    data.controlMode ? '控制模式 ' + ({automatic:'自动',speed:'远程限速',emergency:'紧急停车'}[data.controlMode] || data.controlMode) : '',
     data.onboardCount !== undefined ? '在车 ' + data.onboardCount + ' / ' + data.capacity : '',
     data.speedKmh != null ? '速度 ' + Number(data.speedKmh).toFixed(1) + ' km/h' : '',
     data.etaPickupSeconds != null ? '预计到上车点 ' + data.etaPickupSeconds + ' 秒' : '',
@@ -386,11 +427,14 @@ function showOrder(data, dimension) {
     data.doorTarget ? '车门指令 ' + (data.doorTarget === 'open' ? '开门' : '关门') : '',
     data.error
   ].filter(Boolean).join(' · ');
-  $('riders').replaceChildren(...(data.passengers || []).map(rider => {
+  const riderRow = rider => {
     const item = document.createElement('li');
-    item.textContent = rider.uuid + ' · 车厢索引 ' + rider.car + (rider.driver ? ' · 司机' : '');
+    item.textContent = (rider.playerName || '名称待解析') + ' · ' + rider.uuid + ' · 车厢 ' + rider.car + (rider.driver ? ' · 司机' : '')
+      + ' · 上车 ' + timeLabel(rider.boardedAt) + ' · 下车 ' + (rider.alightedAt ? timeLabel(rider.alightedAt) : '在车');
     return item;
-  }));
+  };
+  $('riders').replaceChildren(...(data.passengers || []).map(riderRow));
+  if (data.passengerHistory) $('passengerVisits').replaceChildren(...data.passengerHistory.map(riderRow));
 }
 function orderParams() {
     const vehicleCars = JSON.parse(value('vehicleCars'));
@@ -402,12 +446,15 @@ function orderParams() {
     const capacity = vehicleCars.reduce((total, car) => total + car.capacity, 0);
     if ($('passengerCount').valueAsNumber > capacity) throw new Error('预约人数超过编组总容量 ' + capacity + ' 人。');
     const params = { orderId: value('createOrder'), vehicleCars };
-    for (const id of ['depotId', 'sidingId', 'pickupPlatformId', 'dropoffPlatformId']) params[id] = value(id);
+    for (const id of ['depotId', 'sidingId', 'pickupPlatformId', 'dropoffPlatformId']) if (value(id)) params[id] = value(id);
+    if (value('centerId')) { params.centerId = value('centerId'); delete params.depotId; delete params.sidingId; }
+    if (value('centerId') && value('centerRouteId')) { params.centerRouteId = value('centerRouteId'); delete params.pickupPlatformId; delete params.dropoffPlatformId; }
     for (const id of ['passengerCount', 'maxSpeedKmh', 'accelerationMps2', 'decelerationMps2']) params[id] = $(id).valueAsNumber;
     if (value('routeName')) params.routeName = value('routeName');
     return params;
 }
 function drawGeometry(geometry) {
+  lastGeometry = geometry;
   const canvas = $('routeMap'), ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const points = geometry.points;
@@ -427,6 +474,8 @@ function drawGeometry(geometry) {
   }
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1], b = points[i];
+    const leg = geometry.legs?.find(leg => b[0] > leg.startMeters && a[0] < leg.endMeters);
+    if (value('mapLeg') !== 'all' && (!leg || leg.stage !== value('mapLeg'))) continue;
     const progress = geometry.progressMeters;
     if (a[0] < progress && progress < b[0]) {
       const fraction = (progress - a[0]) / (b[0] - a[0]);
@@ -463,16 +512,20 @@ $('createForm').addEventListener('submit', event => {
 });
 $('listOrders').onclick = action(async () => {
   const dimension = value('dimension');
-  const { data } = await command('taxi.list', {}, dimension);
+  const data = {rides:[]}; let offset = 0;
+  do {
+    const page = await command('taxi.list', {offset}, dimension);
+    data.rides.push(...page.data.rides); offset = page.data.nextOffset ?? null;
+  } while (offset !== null);
   if (dimension !== value('dimension')) return '维度已更改，请重新查询';
-  options('orders', data.rides.map(ride => ({ id: ride.orderId, phase: ride.phase })), ride => ride.phase);
+  options('orders', data.rides.map(ride => ({ id: ride.orderId, phase: phaseLabel(ride) })), ride => phaseLabel(ride));
   $('orderRows').replaceChildren(...data.rides.map(ride => {
     const row = document.createElement('tr');
     const select = document.createElement('button');
     select.textContent = ride.orderId;
     select.onclick = () => { $('orderId').value = ride.orderId; showOrder(ride, dimension); };
     row.insertCell().append(select);
-    row.insertCell().textContent = ride.phase;
+    row.insertCell().textContent = phaseLabel(ride);
     row.insertCell().textContent = ride.plate || '—';
     return row;
   }));
@@ -493,6 +546,64 @@ $('openDoors').onclick = orderAction('taxi.doors', { state: 'open' });
 $('closeDoors').onclick = orderAction('taxi.doors', { state: 'closed' });
 $('depart').onclick = orderAction('taxi.depart');
 $('destroy').onclick = orderAction('taxi.destroy');
+$('setSpeed').onclick = () => orderAction('taxi.control', {mode:'speed',speedKmh:$('controlSpeed').valueAsNumber})();
+$('emergency').onclick = orderAction('taxi.control', {mode:'emergency'});
+$('resume').onclick = orderAction('taxi.control', {mode:'resume'});
+$('mapLeg').onchange = () => { if (lastGeometry) drawGeometry(lastGeometry); };
+const logLabels = {
+ 'ride.queued':'加入候补队列','ride.queue_dispatched':'候补兑现','ride.queue_expired':'候补等待超时取消',
+ 'ride.queue_failed':'候补发车失败','ride.accepted':'创建订单','ride.route_ready':'路线生成完成',
+ 'ride.dispatched':'车辆出库','ride.waiting_pickup':'到达上车点，开始等客','ride.doors_opened':'车门已开启',
+ 'ride.doors_closed':'车门已关闭','ride.doors_open_command':'手动开门','ride.doors_closed_command':'手动关门','ride.full_boarding':'满员倒计时结束',
+ 'ride.pickup_wait_expired':'等客时间结束','ride.doors_closed_departure_scheduled':'关门并开始发车倒计时',
+ 'ride.pickup_departure_released':'结束等客，允许发车','passenger.boarded':'乘客上车','passenger.alighted':'乘客下车',
+ 'ride.stage_to_pickup':'前往上车地','ride.stage_waiting_pickup':'等待上客','ride.stage_on_trip':'关门发车，行程开始',
+ 'ride.stage_waiting_dropoff':'到达下车点','ride.stage_returning':'开始回库','ride.completed':'订单完成',
+ 'ride.destroyed':'订单取消／车辆销毁','ride.failed':'订单失败','ride.recovered':'重启后回收',
+ 'ride.control_speed':'修改远程限速','ride.control_emergency':'紧急停车','ride.control_automatic':'恢复自动运行'
+};
+async function refreshOrderLogs(orderId, dimension) {
+  let offset = 0, entries = [];
+  do {
+    const {data} = await command('taxi.logs', {orderId,offset}, dimension);
+    entries.push(...data.items); offset = data.nextOffset ?? null;
+  } while (offset !== null);
+  if (orderId !== value('orderId') || dimension !== value('dimension')) return;
+  $('orderLogs').replaceChildren(...entries.map(entry => {
+    const item = document.createElement('li');
+    item.textContent = timeLabel(entry.timestamp) + ' · ' + (logLabels[entry.type] || entry.type)
+      + (entry.detail?.uuid ? ' · ' + (entry.detail.playerName || entry.detail.uuid) : '');
+    return item;
+  }));
+}
+$('loadOrderLogs').onclick = action(async () => {
+  if (!value('orderId')) throw new Error('请先选择订单');
+  await refreshOrderLogs(value('orderId'),value('dimension')); return '已读取订单动态';
+});
+function centerRequirements() {
+  const center = !!value('centerId'), route = center && !!value('centerRouteId');
+  for (const id of ['depotId','sidingId']) { $(id).required = !center; $(id).disabled = center; }
+  for (const id of ['pickupPlatformId','dropoffPlatformId']) { $(id).required = !route; $(id).disabled = route; }
+  const routes = centerData[value('centerId')]?.routes || [];
+  options('centerRoutes', routes, route => route.name);
+}
+for (const id of ['centerId','centerRouteId']) $(id).addEventListener('input',centerRequirements);
+async function loadCenters() {
+  const dimension = value('dimension'), {data} = await command('taxi.centers.list',{},dimension);
+  if (dimension !== value('dimension')) return '维度已更改';
+  centerData = data.centers;
+  options('centers',Object.entries(centerData).map(([id,c])=>({id,name:c.name})),c=>c.name);
+  $('centerRows').replaceChildren(...Object.entries(centerData).map(([id,c])=>{
+    const button=document.createElement('button'); button.textContent=c.name+' · '+id+' · '+c.depotIds.length+' 个车厂';
+    button.onclick=()=>{$('editCenterId').value=id;$('centerJson').value=pretty(c);$('centerId').value=id;centerRequirements();};
+    return button;
+  }));
+  centerRequirements(); return '车辆中心已加载';
+}
+$('loadCenters').onclick=action(loadCenters);
+$('saveCenter').onclick=action(async()=>{await command('taxi.centers.put',{centerId:value('editCenterId'),center:JSON.parse(value('centerJson'))});return loadCenters();});
+$('removeCenter').onclick=action(async()=>{if(!confirm('删除车辆中心 '+value('editCenterId')+'？'))return '已取消';await command('taxi.centers.remove',{centerId:value('editCenterId')});return loadCenters();});
+$('reloadCenters').onclick=action(async()=>{await command('taxi.centers.reload');return loadCenters();});
 for (const button of $('catalogButtons').querySelectorAll('button')) {
   button.onclick = action(async () => {
     const dimension = value('dimension');

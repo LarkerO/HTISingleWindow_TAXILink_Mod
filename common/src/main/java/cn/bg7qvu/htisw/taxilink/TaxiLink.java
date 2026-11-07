@@ -14,7 +14,8 @@ public final class TaxiLink {
     public static void init() {
         if (!INITIALIZED.compareAndSet(false, true)) return;
         try {
-            lifecycle("SERVER_STARTED", () -> {
+            registerEvent("LifecycleEvent", "SERVER_STARTED", args -> {
+                PlayerNames.server = args[0];
                 try {
                     Class<?> platform = Class.forName("dev.architectury.platform.Platform");
                     Path configPath = ((Path) platform.getMethod("getConfigFolder").invoke(null)).resolve("taxilink.json");
@@ -23,12 +24,11 @@ public final class TaxiLink {
                         LOG.log(System.Logger.Level.INFO, "Disabled. Configure " + configPath.toAbsolutePath() + " to enable TAXILink.");
                         return;
                     }
-                    boolean integrated = ((Enum<?>) platform.getMethod("getEnvironment").invoke(null)).name().equals("CLIENT");
-                    runtime = new TaxiRuntime(config, integrated ? null : Path.of("taxilink-state"));
+                    runtime = new TaxiRuntime(config, null);
                     runtime.start();
                 } catch (Exception e) { LOG.log(System.Logger.Level.ERROR, "TAXILink startup failed", e); }
             });
-            lifecycle("SERVER_STOPPING", () -> { if (runtime != null) { runtime.close(); runtime = null; } });
+            lifecycle("SERVER_STOPPING", () -> { if (runtime != null) { runtime.close(); runtime = null; } PlayerNames.clear(); VehicleControl.clear(); });
             registerEvent("CommandRegistrationEvent", "EVENT", args -> DepotReloadCommand.register(args[0], () -> runtime));
         } catch (ReflectiveOperationException e) { throw new IllegalStateException("Architectury 13.0.8 lifecycle API required", e); }
     }

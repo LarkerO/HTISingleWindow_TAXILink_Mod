@@ -17,8 +17,8 @@ $env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-21'
 
 构建产物：
 
-- `fabric/build/libs/taxilink-fabric-1.21.1-0.4.0.jar`
-- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.4.0.jar`
+- `fabric/build/libs/taxilink-fabric-1.21.1-0.5.0.jar`
+- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.5.0.jar`
 
 选对应加载器 jar 放入服务端 `mods`。不要安装 common jar、sources jar 或同时安装两个版本。服务端另装对应平台的 Architectury 13.0.8 和 MTR 4.1.0-beta.2。根目录提供的 MTR jar 的 NeoForge 元数据声明 Minecraft 1.21.1；Fabric 服务端需要另用 MTR 的 Fabric 发行包。
 
@@ -26,7 +26,9 @@ $env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-21'
 
 编辑 WebSocket 地址和服务端标识后，单机重新打开存档即可读取配置，独立服务器重启后生效。单机订单日志跟随存档，保存在各维度的 MTR 数据目录下。参考 `config.example.json`。
 
-车厂白名单单独保存在游戏实例的 `config/taxilink-depots.json`，格式如 `{"minecraft/overworld":["3723654952439211127"]}`。网页「车厂白名单」可按维度增删授权，保存后即时生效。手动编辑文件后，游戏管理员可执行 `/taxilink reload-depots`，也可在网页点「重新读取白名单文件」。首次升级会迁移旧配置的 `allowedDepots`。移除授权只影响新订单。
+0.5.0 将车厂白名单、车辆中心、订单日志全部隔离到当前存档的 MTR 维度数据目录内（`taxilink-state`）。旧实例白名单不再自动套用到其他存档；升级前结束旧活动订单，并按 [车辆中心与运营接口](docs/VEHICLE_CENTERS.md) 迁移或重新授权。网页增删授权即时生效，手动编辑后使用 `/taxilink reload-depots` 重新读取。
+
+车辆中心支持多个专用车厂及不同接送路线，自动选择空闲车厂，繁忙时按接收顺序候补，默认 120 秒超时取消。订单新增中文行程阶段、乘客名字与上下车历史、持久化动态、三段轨迹筛选、远程限速、急停和恢复。接口及配置见 [0.5.0 运营指南](docs/VEHICLE_CENTERS.md)。
 
 ## 调度约束
 
@@ -54,6 +56,6 @@ $env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-21'
 - 可独立运行或并入 webman 的 PHP 调试网关：[`examples/php/webman/README.md`](examples/php/webman/README.md)
 - 实测记录与联调表：[`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)
 
-工程用 Java library 分模块构建。公共逻辑只引用 MTR Core 的无映射 API；Architectury 生命周期通过它的公开事件接口注册适配器，故相同字节码可用于 Fabric intermediary 与 NeoForge Mojmap，无 Minecraft 名称重映射需求。车门 Mixin 目标也仅为 MTR Core，`remap=false`。MTR、Architectury、Mixin 与加载器均由运行时提供，不打入成品。
+工程用 Java library 分模块构建。公共逻辑只引用 MTR Core 的无映射 API；Architectury 生命周期通过它的公开事件接口注册适配器，故相同字节码可用于 Fabric intermediary 与 NeoForge Mojmap，无 Minecraft 名称重映射需求。车门和运动 Mixin 目标为 MTR Core，广播 Mixin 目标为 MTR 的 PersistentStateData，均使用 `remap=false`。Minecraft 在线玩家名字通过主线程上的双映射反射获取。MTR、Architectury、Mixin 与加载器均由运行时提供，不打入成品。
 
 MTR 没有公开枚举模拟器和遥控车门的完整 API，私有字段/方法访问集中在 `mtr/MtrAccess.java`，启动时校验。版本锁定是有意设计，升级 MTR 必须重新核对并联调。官方源码参考：<https://github.com/Minecraft-Transit-Railway/Transport-Simulation-Core>；本次适配以用户提供的 beta jar 字节码为准。

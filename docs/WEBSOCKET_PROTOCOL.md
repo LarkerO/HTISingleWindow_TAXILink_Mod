@@ -37,7 +37,7 @@ PHP 将该已鉴权连接绑定订阅频道，可回 `{"type":"subscribed"}`；�
 
 ## 创建订单
 
-0.3.0 起，网关可以通过 `taxi.depots.list`、`taxi.depots.add`、`taxi.depots.remove` 和 `taxi.depots.reload` 管理游戏实例的 `config/taxilink-depots.json`。所有命令使用标准信封和维度字段。add/remove 的 params 传 `depotId` 字符串，list/reload 传空对象。成功 data 返回当前维度的 `dimension` 和 `depotIds`。添加时校验车厂存在且只有一条所属停车轨道，移除允许清理已从地图删除的车厂 ID。文件保存或读取失败返回 `ALLOWLIST_IO_ERROR`，内存里的有效白名单保留。
+0.3.0 起，网关可以通过 `taxi.depots.list`、`taxi.depots.add`、`taxi.depots.remove` 和 `taxi.depots.reload` 管理车厂白名单（0.5.0 起位于当前存档 MTR 维度目录的 `taxilink-state/taxilink-depots.json`）。所有命令使用标准信封和维度字段。add/remove 的 params 传 `depotId` 字符串，list/reload 传空对象。成功 data 返回当前维度的 `dimension` 和 `depotIds`。添加时校验车厂存在且只有一条所属停车轨道，移除允许清理已从地图删除的车厂 ID。文件保存或读取失败返回 `ALLOWLIST_IO_ERROR`，内存里的有效白名单保留。
 
 ```json
 {
@@ -153,3 +153,6 @@ PHP 将该已鉴权连接绑定订阅频道，可回 `{"type":"subscribed"}`；�
 | `STORAGE_ERROR`, `RECOVERY_FAILED` | 检查状态目录、备份一致性和管理员恢复 |
 
 异步寻路失败通过 `ride.failed.data.error` 返回错误码；MTR 详细异常记录在服务器日志。后端应为无响应设置超时并重查同 orderId，而非认定创建失败后立即新建订单。
+
+
+0.5.0 的车辆中心、候补队列、中文行程阶段、乘客历史、动态日志、分段轨迹及控速接口参见 [运营接口](VEHICLE_CENTERS.md)。原 `phase` 字段保持兼容，业务前端优先展示 `stageLabel`。

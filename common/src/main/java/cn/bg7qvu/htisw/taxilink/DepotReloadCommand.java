@@ -24,7 +24,7 @@ final class DepotReloadCommand {
                     return 1;
                 } catch (IOException e) {
                     TaxiLink.LOG.log(System.Logger.Level.ERROR, "Cannot reload TAXILink depot allowlist", e);
-                    throw failure("Cannot reload config/taxilink-depots.json. Previous whitelist retained.");
+                    throw failure("Cannot reload world TAXILink depot files. Previous whitelist retained.");
                 } catch (ReflectiveOperationException e) {
                     TaxiLink.LOG.log(System.Logger.Level.ERROR, "Cannot send TAXILink command feedback", e);
                     return 1;

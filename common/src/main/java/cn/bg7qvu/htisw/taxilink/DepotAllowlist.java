@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 
-/** Instance-wide allowlist with atomic snapshots for all MTR dimensions. */
+/** World-scoped allowlist with atomic snapshots for safe reloads. */
 final class DepotAllowlist {
     static final String FILE_NAME = "taxilink-depots.json";
     private final Path path;

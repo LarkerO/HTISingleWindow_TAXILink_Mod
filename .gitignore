@@ -12,6 +12,7 @@
 run/
 config/taxilink.json
 taxilink-depots.json
+taxilink-centers.json
 taxilink.token
 taxilink-*.pem
 sm2-keys/

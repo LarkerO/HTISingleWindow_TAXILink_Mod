@@ -42,7 +42,11 @@ final class RoutePreview {
         var inbound = new ObjectArrayList<PathData>();
         return new QuoteJob(List.of(leg(sim, siding, pickup, -1, altitude, outbound),
             leg(sim, pickup, dropoff, 0, altitude, trip), leg(sim, dropoff, siding, 2, altitude, inbound)),
-            () -> estimate(sim, siding, outbound, trip, cap, acceleration, deceleration, lowSpeed));
+            () -> {
+                JsonObject result = estimate(sim, siding, outbound, trip, cap, acceleration, deceleration, lowSpeed);
+                if (p.has("centerRevision")) result.add("centerRevision", p.get("centerRevision").deepCopy());
+                return result;
+            });
     }
 
     private static JsonObject estimate(Simulator sim, Siding siding, ObjectArrayList<PathData> outbound,
@@ -59,8 +63,9 @@ final class RoutePreview {
         for (PathData path : trip) {
             double speed = Math.min(cap, path.getSpeedLimitKilometersPerHour()) / 3.6;
             double length = path.getEndDistance() - path.getStartDistance();
-            seconds += length / speed;
-            if (speed * 3.6 < lowSpeed) lowSpeedSeconds += length / speed;
+            if (speed <= 0 && length > 0) throw new Fault("INVALID_ROUTE", "Passenger route contains a zero-speed rail");
+            seconds += length / Math.max(speed, .001);
+            if (speed * 3.6 < lowSpeed) lowSpeedSeconds += length / Math.max(speed, .001);
         }
         // Approximate the start and stop from rest; signals and boarding are outside the estimate.
         double peak = Math.min(cap / 3.6, Math.sqrt(2 * distance / (1 / acceleration + 1 / deceleration)));

@@ -23,6 +23,8 @@ public final class Config {
     public int fullBoardingCloseDelaySeconds = 5;
     public int closedDoorDepartureDelaySeconds = 5;
     public int maxActiveRides = 64;
+    public int queueTimeoutSeconds = 120;
+    public int maxQueuedRides = 256;
     public int maxMessageBytes = 65536;
     public int maxPendingCommands = 128;
     /** dimension (MTR namespace/path) -> explicitly reserved depot IDs */
@@ -59,6 +61,8 @@ public final class Config {
         return allowedDepotIds(dimension).contains(Long.toString(depot));
     }
     public void validate() {
+        if (queueTimeoutSeconds < 1 || queueTimeoutSeconds > 86400 || maxQueuedRides < 1 || maxQueuedRides > 4096)
+            throw new IllegalArgumentException("Invalid TAXILink queue limits");
         if (pickupWaitSeconds < 1 || pickupWaitSeconds > 3600 || fullBoardingCloseDelaySeconds < 0
             || fullBoardingCloseDelaySeconds > 600 || closedDoorDepartureDelaySeconds < 0 || closedDoorDepartureDelaySeconds > 600)
             throw new IllegalArgumentException("Invalid TAXILink pickup timing");
@@ -80,14 +84,24 @@ public final class Config {
         Path path = Path.of(file);
         return path.isAbsolute() || configDirectory == null ? path.toAbsolutePath() : configDirectory.resolve(path).normalize();
     }
+    Config forWorld(Path root) throws IOException {
+        Config local = Json.GSON.fromJson(Json.GSON.toJsonTree(this), Config.class);
+        local.configDirectory = configDirectory;
+        local.allowedDepots = new LinkedHashMap<>();
+        local.depotAllowlist = new DepotAllowlist(root.resolve(DepotAllowlist.FILE_NAME), Map.of());
+        return local;
+    }
     public static Config load(Path path) throws Exception {
         boolean fresh = Files.notExists(path);
         JsonObject root = fresh ? Json.GSON.toJsonTree(new Config()).getAsJsonObject() : Json.object(Files.readString(path));
         Config config = Json.GSON.fromJson(root, Config.class);
         config.configDirectory = path.toAbsolutePath().getParent();
-        config.depotAllowlist = new DepotAllowlist(config.configDirectory.resolve(DepotAllowlist.FILE_NAME), config.allowedDepots);
-        boolean changed = root.remove("allowedDepots") != null || fresh;
-        for (var setting : Map.of("pickupWaitSeconds", config.pickupWaitSeconds,
+        // World permissions are loaded only after its MTR simulator is available.
+        // Preserve old nonempty embedded lists for an explicit operator migration.
+        boolean changed = fresh;
+        if (config.allowedDepots.isEmpty()) changed |= root.remove("allowedDepots") != null;
+        for (var setting : Map.of("queueTimeoutSeconds", config.queueTimeoutSeconds, "maxQueuedRides", config.maxQueuedRides,
+            "pickupWaitSeconds", config.pickupWaitSeconds,
             "fullBoardingCloseDelaySeconds", config.fullBoardingCloseDelaySeconds,
             "closedDoorDepartureDelaySeconds", config.closedDoorDepartureDelaySeconds).entrySet()) {
             if (!root.has(setting.getKey())) {

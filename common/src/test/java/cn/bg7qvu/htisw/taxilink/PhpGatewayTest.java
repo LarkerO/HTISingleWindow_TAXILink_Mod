@@ -95,7 +95,7 @@ class PhpGatewayTest {
                 assertEquals(409, post(http, base, data("type", "taxi.create", "params", data("orderId", "changed", "quoteId", quoteId)).toString()).statusCode());
                 String signed = sender.sign("frontend", data("type", "taxi.create", "requestId", "business-confirm",
                     "params", data("orderId", "test", "quoteId", quoteId)).toString());
-                var businessRequest = HttpRequest.newBuilder(base.resolve("/signed-command")).timeout(Duration.ofSeconds(5))
+                var businessRequest = HttpRequest.newBuilder(base.resolve("/signed-command")).timeout(Duration.ofSeconds(20))
                     .POST(HttpRequest.BodyPublishers.ofString(signed)).build();
                 var confirmed = http.send(businessRequest, HttpResponse.BodyHandlers.ofString());
                 assertEquals(200, confirmed.statusCode(), confirmed.body());
@@ -117,7 +117,8 @@ class PhpGatewayTest {
             "-out", publicKey.toString()).start().waitFor());
     }
     private static int port() throws Exception { try (var socket = new java.net.ServerSocket(0, 1, InetAddress.getLoopbackAddress())) { return socket.getLocalPort(); } }
-    private static HttpRequest.Builder auth(URI uri) { return HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(5)).header("Authorization", "Bearer local-debug-integration-only"); }
+    // Gateway command timeout is 15 s. Let it return its explicit result instead of masking it with a 5 s client timeout.
+    private static HttpRequest.Builder auth(URI uri) { return HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(20)).header("Authorization", "Bearer local-debug-integration-only"); }
     private static HttpResponse<String> post(HttpClient http, URI base, String text) throws Exception {
         return http.send(auth(base.resolve("/command")).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(text)).build(), HttpResponse.BodyHandlers.ofString());
     }
