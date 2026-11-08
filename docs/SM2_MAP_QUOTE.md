@@ -21,7 +21,7 @@ SM2 使用 SM3，区分 ID 为 `TAXILink-v2`，签名格式为 DER。信封字�
 ## 报价与发单
 
 1. `taxi.quote` 接收拟下单的 `taxi.create` 参数与维度。模组使用 MTR 寻路检查车厂至上车点、上车点至下车点、下车点至车厂三段连通性。询价只读，不创建路线、车辆或订单。
-2. Gateway 返回乘客路段的 `distanceMeters`、`estimatedSeconds`、`estimatedLowSpeedSeconds`、路线采样、`fare`、`quoteId` 和 `quoteExpiresAt`。`fare.amountMinor` 以分计，`componentsMinor` 列出起步价、里程费、低速费和远途费。
+2. Gateway 返回乘客路段的 `distanceMeters`、`estimatedSeconds`、`estimatedLowSpeedSeconds`、路线采样、`fare`、`quoteId` 和 `quoteExpiresAt`。另返回 `pickupDistanceMeters`（车厂到上车点）和 `returnDistanceMeters`（下车点到原车厂），用于业务后端按轨道接客距离调度及计算调度费。三个距离均以米计，询价只读，不占用车辆。`fare.amountMinor` 以分计，`componentsMinor` 列出起步价、里程费、低速费和远途费。
 3. 业务侧在用户确认并完成自己的支付流程后，才发送 `taxi.create`。参数与报价一致，并额外传入 `params.quoteId`。Gateway 验证报价绑定后转发给模组。报价保存在 Gateway 内存中，默认有效 5 分钟。它是估算，不锁定车厂或轨道，派车时会重新检查路线和可用性。
 
 费率位于 PHP 的 `webman/config/taxilink-fares.json`，每次询价读取。可通过 `TAXILINK_FARE_FILE` 指向其他文件。初始规则按截图录入，默认一格等于一米，以报价时刻的 Asia/Shanghai 时段计价。低速阈值默认 10 km/h。低速时长和总时长来自轨道限速和起终点加减速近似，未计信号等待。远途费按超过 5 km 和 15 km 的各自区间累进。

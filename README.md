@@ -8,11 +8,13 @@
 
 ### GitHub Actions 自动构建
 
-仓库的 `Build mods` workflow 在代码、构建配置或 workflow 变更的 push / pull request 时运行，也可在 GitHub Actions 页面手动选择 **Run workflow**。纯文档修改不触发自动构建，同一分支或 PR 的新运行会取消旧运行。
+仓库的 `模组编译测试` workflow 在模组代码、构建配置或 workflow 变更的 push / pull request 时运行，也可在 GitHub Actions 页面手动选择 **Run workflow**。纯文档修改不触发自动构建，同一分支或 PR 的新运行会取消旧运行。
 
-CI 使用 Java 21，自动下载固定的 MTR 4.1.0-beta.2 / Minecraft 1.21.1 NeoForge 发行包作为公共编译和测试依赖，并校验 SHA-512，无需上传本地 MTR jar 或配置密钥。执行 `build packageRelease`，运行公共 Java 测试并生成 Fabric、NeoForge 两个平台的模组及交付 ZIP。
+CI 分别显示 `fabric 编译与测试`、`neoforge 编译与测试` 两个检查。每个平台使用 Java 21，下载并校验对应平台的 MTR 4.1.0-beta.2 / Minecraft 1.21.1 发行包，执行该平台的 `jar` 编译及 `:common:test`。无需上传本地 MTR jar 或配置密钥。任一平台失败不会取消另一平台的检查。
 
-构建成功后，在运行页面的 **Artifacts** 下载 `TAXILink-<提交 SHA>`，其中包含双平台 jar、源码 jar 和交付 ZIP；测试报告单独上传。安装时选择对应平台的非 `sources` jar。产物保留 14 天，测试报告保留 7 天；不会自动创建 GitHub Release。CI 不包含需要额外 PHP 环境的可选网关联调，也不代替游戏内加载器与 Mixin 验证。
+运行页面的 **Summary** 直接显示各平台编译结果、测试通过/失败/跳过数量、失败用例、jar 文件名和下载链接。**Artifacts** 中的 `TAXILink-fabric-MC1.21.1`、`TAXILink-neoforge-MC1.21.1` 各自只包含一个可安装模组 jar，下载解压即可使用。编译成功但测试失败时仍保留 jar 供排查，整体检查保持失败，请以检查结果为准。CI 不再生成混合交付 ZIP 或上传源码 jar。
+
+模组保留 14 天，诊断报告 `test-reports-<平台>` 保留 7 天；不会自动创建 GitHub Release。CI 不包含需要额外 PHP 环境的可选网关联调，也不代替游戏内加载器与 Mixin 验证。本地仍可执行 `packageRelease` 生成完整交付包。
 
 ### 本地构建
 
