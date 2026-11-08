@@ -79,7 +79,7 @@ final class VehicleCenters {
             string(r, "name"); Json.id(r, "pickupPlatformId"); Json.id(r, "dropoffPlatformId");
         }
     }
-    JsonObject resolve(Simulator sim, JsonObject p, Long selectedDepot) {
+    JsonObject resolve(Simulator sim, Config config, JsonObject p, Long selectedDepot) {
         JsonObject c = get(string(p, "centerId"));
         JsonObject result = p.deepCopy();
         if (p.has("centerRouteId")) {
@@ -91,7 +91,18 @@ final class VehicleCenters {
             result.add("dropoffPlatformId", route.get("dropoffPlatformId").deepCopy());
             if (!result.has("routeName")) result.add("routeName", route.get("name").deepCopy());
         }
-        long depotId = selectedDepot == null ? Json.id(data("id", c.getAsJsonArray("depotIds").get(0)), "id") : selectedDepot;
+        if (selectedDepot == null) {
+            for (JsonElement candidate : c.getAsJsonArray("depotIds")) {
+                long id = Json.id(data("id", candidate), "id");
+                Depot available = sim.depotIdMap.get(id);
+                if (config.allows(sim.dimension, id) && available != null && available.savedRails.size() == 1) {
+                    selectedDepot = id;
+                    break;
+                }
+            }
+        }
+        if (selectedDepot == null) throw new Fault("DEDICATED_DEPOT_REQUIRED", "Center has no valid single-siding depot");
+        long depotId = selectedDepot;
         Depot depot = sim.depotIdMap.get(depotId);
         if (depot == null || depot.savedRails.size() != 1) throw new Fault("DEDICATED_DEPOT_REQUIRED", "Center depot must have one siding");
         result.addProperty("depotId", Long.toString(depotId));

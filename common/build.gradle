@@ -11,4 +11,5 @@ dependencies {
 }
 tasks.named('test') {
     inputs.property('phpIntegrationEnabled', providers.environmentVariable('TAXILINK_TEST_PHP').map { true }.orElse(false))
+    inputs.property('platformIntegrationEnabled', providers.environmentVariable('TAXILINK_PLATFORM_ROOT').map { true }.orElse(false))
 }

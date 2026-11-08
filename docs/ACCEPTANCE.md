@@ -61,3 +61,9 @@ architectury-13.0.8.jar
 12. 多车厂并发派单，核查各单路线、限速、车门和回收互不干扰。
 
 正式接入前需确认后端的 WebSocket URL、令牌、serverId、维度、实际车厂/站台 ID 和车型几何参数；这些没有硬编码在 jar 中。
+
+## 本轮安全与跨仓库回归
+
+`RuntimeSafetyTest` 验证生成阶段已上客车辆不会被清除、途中车辆丢失返回 `VEHICLE_LOST` 而非完成，以及中心首个车厂失效后的备用车厂调度。
+
+可选平台契约测试：设置 `TAXILINK_PLATFORM_ROOT` 为独立 `HTISingleWindow_TAXILink` 仓库根目录（需安装 backend Composer 依赖），设置 `TAXILINK_TEST_PHP` 与 `TAXILINK_TEST_OPENSSL` 为可执行文件，再运行 `:common:test`。测试启动临时 SQLite 和随机回环端口，使用真实平台网关、SM2 双向签名及 MTR Core 完成询价、发单、取消，并检查长整数 ID 与鉴权。未提供平台仓库时此测试跳过。

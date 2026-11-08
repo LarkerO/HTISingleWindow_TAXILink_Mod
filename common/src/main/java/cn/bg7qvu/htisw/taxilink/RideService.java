@@ -333,7 +333,10 @@ public final class RideService {
                     if (generation != Depot.GeneratedStatus.NONE && generation != Depot.GeneratedStatus.SUCCESSFUL)
                         throw new Fault("ROUTE_GENERATION_FAILED", generation.name());
                     if (generation == Depot.GeneratedStatus.SUCCESSFUL) {
+                        if (!passengers(sim, ride).isEmpty())
+                            throw new Fault("VEHICLE_OCCUPIED", "Passengers must disembark before preparing departure");
                         siding.clearVehicles();
+                        ride.error = null;
                         long dwell = (config.pickupWaitSeconds + config.closedDoorDepartureDelaySeconds + 10L) * 1000;
                         MtrAccess.configureRidePaths(siding, ride.params.get("maxSpeedKmh").getAsDouble(), id(ride.params, "pickupPlatformId"), dwell);
                         siding.startGeneratingDepartures();
@@ -352,7 +355,8 @@ public final class RideService {
                 observePassengers(sim, ride);
                 if (ride.phase.equals("ACTIVE")) {
                     Vehicle v = vehicle(sim, ride);
-                    if (v == null || !v.getIsOnRoute()) {
+                    if (v == null) throw new Fault("VEHICLE_LOST", "Dispatched vehicle disappeared before confirmed return");
+                    if (!v.getIsOnRoute()) {
                         if (!passengers(sim, ride).isEmpty()) { ride.phase = "AWAITING_DISEMBARK"; save(ride); emit(ride, "ride.awaiting_disembark"); }
                         else complete(sim, ride);
                     } else {
@@ -480,7 +484,7 @@ public final class RideService {
     }
     JsonObject resolveQuote(Simulator sim, JsonObject p) {
         if (!p.has("centerId")) return p;
-        JsonObject resolved = centers.resolve(sim, p, null);
+        JsonObject resolved = centers.resolve(sim, config, p, null);
         resolved.addProperty("centerRevision", centers.revision(string(p, "centerId")));
         return resolved;
     }
@@ -515,7 +519,7 @@ public final class RideService {
         if (!p.has("centerId")) return createDirect(sim, p);
         if (p.has("centerRevision") && !centers.revision(string(p, "centerId")).equals(string(p, "centerRevision")))
             throw new Fault("QUOTE_STALE", "Vehicle center changed; request a new quote");
-        JsonObject resolved = centers.resolve(sim, p, null);
+        JsonObject resolved = centers.resolve(sim, config, p, null);
         // Validate the request before admitting it to a queue. Path generation stays asynchronous.
         number(resolved, "maxSpeedKmh", 1, 160); number(resolved, "accelerationMps2", .1, 4); number(resolved, "decelerationMps2", .1, 4);
         if (!resolved.has("vehicleCars") || !resolved.get("vehicleCars").isJsonArray()
@@ -569,7 +573,7 @@ public final class RideService {
                     if (!busy[0]) { free = depotId; break; }
                 }
                 if (free == null) { blocked.add(ride.centerId); continue; }
-                JsonObject params = centers.resolve(sim, ride.clientParams, free);
+                JsonObject params = centers.resolve(sim, config, ride.clientParams, free);
                 rides.remove(ride.orderId);
                 try {
                     createDirect(sim, params, ride);
