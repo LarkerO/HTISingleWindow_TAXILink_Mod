@@ -1,4 +1,4 @@
-name: Build mods
+name: 模组编译测试
 
 on:
   push:
@@ -10,8 +10,6 @@ on:
       - 'common/**'
       - 'fabric/**'
       - 'neoforge/**'
-      - 'examples/**'
-      - 'config.example.json'
       - '.github/workflows/build.yml'
   pull_request:
     paths:
@@ -22,8 +20,6 @@ on:
       - 'common/**'
       - 'fabric/**'
       - 'neoforge/**'
-      - 'examples/**'
-      - 'config.example.json'
       - '.github/workflows/build.yml'
   workflow_dispatch:
 
@@ -36,45 +32,106 @@ concurrency:
 
 jobs:
   build:
+    name: ${{ matrix.loader }} 编译与测试
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - loader: fabric
+            version: JSuVAgAb
+            sha512: 91066c27e4e4eefa5cf3c6212cae377bdc91b89797b7289265ecab75dca243d444eccbae6b5406ed12c0303d5aa3d1535e6625de2e8b563f70f4b80e87c4cf08
+          - loader: neoforge
+            version: 9SDO8rYc
+            sha512: 95a8bfd933a058b4f290bd51567f8fee3d3b797aadfe2132d1276cecdf5d1987c72d79dba6663e9f3481008ca0e8463777b9e4387f72e36ffee411982a6142ec
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Java 21
+      - name: 配置 Java 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
           cache: gradle
 
-      - name: Download pinned MTR dependency
-        shell: bash
+      - name: 下载并校验对应平台的 MTR
+        env:
+          LOADER: ${{ matrix.loader }}
+          VERSION: ${{ matrix.version }}
+          SHA512: ${{ matrix.sha512 }}
         run: |
           curl --fail --location --retry 3 --connect-timeout 30 --max-time 300 \
-            'https://cdn.modrinth.com/data/XKPAmI6u/versions/9SDO8rYc/MTR-neoforge-4.1.0-beta.2%2B1.21.1.jar' \
+            "https://cdn.modrinth.com/data/XKPAmI6u/versions/${VERSION}/MTR-${LOADER}-4.1.0-beta.2%2B1.21.1.jar" \
             --output mtr-4.1.0-beta.2.jar
-          echo '95a8bfd933a058b4f290bd51567f8fee3d3b797aadfe2132d1276cecdf5d1987c72d79dba6663e9f3481008ca0e8463777b9e4387f72e36ffee411982a6142ec  mtr-4.1.0-beta.2.jar' | sha512sum --check --strict
+          echo "${SHA512}  mtr-4.1.0-beta.2.jar" | sha512sum --check --strict
 
-      - name: Test and build both loaders
-        run: bash ./gradlew --no-daemon --console=plain build packageRelease
+      - name: 编译 ${{ matrix.loader }} 模组 jar
+        id: compile
+        env:
+          LOADER: ${{ matrix.loader }}
+        run: bash ./gradlew --no-daemon --console=plain --stacktrace ":${LOADER}:jar"
 
-      - name: Upload mods and release bundle
+      - name: 使用 ${{ matrix.loader }} MTR 运行逻辑测试
+        id: tests
+        run: bash ./gradlew --no-daemon --console=plain --stacktrace :common:test
+
+      - name: 上传 ${{ matrix.loader }} 可安装模组
+        id: mod
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: TAXILink-${{ github.sha }}
+          name: TAXILink-${{ matrix.loader }}-MC1.21.1
           path: |
-            fabric/build/libs/*.jar
-            neoforge/build/libs/*.jar
-            dist/TAXILink-*.zip
+            ${{ matrix.loader }}/build/libs/*.jar
+            !${{ matrix.loader }}/build/libs/*-sources.jar
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload test reports
+      - name: 在运行页面展示编译与测试结果
+        if: ${{ !cancelled() }}
+        env:
+          LOADER: ${{ matrix.loader }}
+          COMPILE_RESULT: ${{ steps.compile.outcome }}
+          TEST_RESULT: ${{ steps.tests.outcome }}
+          ARTIFACT_URL: ${{ steps.mod.outputs.artifact-url }}
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          labels = {'success': '✅ 通过', 'failure': '❌ 失败', 'skipped': '⏭️ 未执行', 'cancelled': '已取消'}
+          lines = [f"## TAXILink {os.environ['LOADER']} · Minecraft 1.21.1",
+                   '', '| 检查 | 结果 |', '| --- | --- |']
+          for name, key in [('模组编译', 'COMPILE_RESULT'), ('逻辑测试', 'TEST_RESULT')]:
+              result = os.environ.get(key, '')
+              lines.append(f"| {name} | {labels.get(result, '未执行')} |")
+          reports = [ET.parse(p).getroot() for p in glob.glob('common/build/test-results/test/TEST-*.xml')]
+          if reports:
+              counts = {key: sum(int(r.get(key, 0)) for r in reports) for key in ['tests', 'failures', 'errors', 'skipped']}
+              passed = counts['tests'] - counts['failures'] - counts['errors'] - counts['skipped']
+              lines += ['', f"测试：{passed} 通过，{counts['failures'] + counts['errors']} 失败，{counts['skipped']} 跳过。"]
+              failed = [f"- `{r.get('name')}.{case.get('name')}`" for r in reports for case in r.findall('testcase')
+                        if case.find('failure') is not None or case.find('error') is not None]
+              if failed:
+                  lines += ['', '失败用例（详细错误见测试步骤日志）：', *failed[:20]]
+          for jar in sorted(Path(os.environ['LOADER'], 'build/libs').glob('*.jar')):
+              if not jar.name.endswith('-sources.jar'):
+                  lines += ['', f"安装文件：`{jar.name}`（{jar.stat().st_size:,} 字节）"]
+          if os.environ.get('ARTIFACT_URL'):
+              lines += ['', f"[下载此平台的模组]({os.environ['ARTIFACT_URL']})，解压后取得 jar。"]
+          lines += ['', '此检查验证编译及 MTR Core 逻辑；不包含实际游戏启动、Mixin 注入及可选 PHP 网关联调。']
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write('\n'.join(lines) + '\n')
+          PY
+
+      - name: 保存测试诊断报告
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports-${{ github.sha }}
+          name: test-reports-${{ matrix.loader }}
           path: |
             common/build/reports/tests/test/
             common/build/test-results/test/*.xml
