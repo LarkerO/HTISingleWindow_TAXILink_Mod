@@ -92,6 +92,22 @@ class PlatformGatewayTest {
                 assertEquals(Long.toString(fixture.depot.getId()),created.getAsJsonObject("data").get("depotId").getAsString());
                 JsonObject cancelled = object(rpc(http,token,"taxi.destroy",data("orderId","test-order")).body());
                 assertEquals("DESTROYED",cancelled.getAsJsonObject("data").get("phase").getAsString());
+                Path checkLogs = Files.writeString(temp.resolve("check-logs.php"), """
+                    <?php
+                    $db = new PDO('sqlite:' . $argv[1]);
+                    $connected = $db->query("SELECT COUNT(*) FROM system_logs WHERE channel='mod' AND event='connected'")->fetchColumn();
+                    $commands = $db->query("SELECT COUNT(*) FROM system_logs s JOIN system_logs f
+                        ON f.request_id=s.request_id AND f.command=s.command
+                        WHERE s.event='command_sent' AND f.event='command_finished'
+                        AND f.result='success' AND f.duration_ms>=0 AND f.created_at>=s.created_at")->fetchColumn();
+                    echo "$connected,$commands";
+                    """);
+                Process check = new ProcessBuilder(php, checkLogs.toString(), temp.resolve("test.sqlite").toString())
+                    .redirectErrorStream(true).start();
+                assertTrue(check.waitFor(10, TimeUnit.SECONDS));
+                String logCounts = new String(check.getInputStream().readAllBytes());
+                assertEquals(0, check.exitValue(), logCounts);
+                assertEquals("1,3", logCounts, () -> read(log));
             } finally { link.close(); }
         } finally {
             var children = process.descendants().toList();

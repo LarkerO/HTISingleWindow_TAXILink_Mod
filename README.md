@@ -29,14 +29,16 @@ $env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-21'
 
 构建产物：
 
-- `fabric/build/libs/taxilink-fabric-1.21.1-0.5.0.jar`
-- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.5.0.jar`
+- `fabric/build/libs/taxilink-fabric-1.21.1-0.5.1.jar`
+- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.5.1.jar`
 
 选对应加载器 jar 放入服务端 `mods`。不要安装 common jar、sources jar 或同时安装两个版本。服务端另装对应平台的 Architectury 13.0.8 和 MTR 4.1.0-beta.2。根目录提供的 MTR jar 的 NeoForge 元数据声明 Minecraft 1.21.1；Fabric 服务端需要另用 MTR 的 Fabric 发行包。
 
 独立服务器首次启动、或游戏实例首次打开单机存档时，会在对应实例的 `config` 目录生成 `taxilink.json`，默认关闭。0.4.0 默认使用 SM2 双向认证与签名。模组配置 `sm2PrivateKeyFile`、`sm2GatewayPublicKeyFile` 和 `opensslExecutable`，相对密钥路径以配置目录为准。安装步骤与旧版迁移见 [0.4.0 联调指南](docs/SM2_MAP_QUOTE.md)。
 
 编辑 WebSocket 地址和服务端标识后，单机重新打开存档即可读取配置，独立服务器重启后生效。单机订单日志跟随存档，保存在各维度的 MTR 数据目录下。参考 `config.example.json`。
+
+0.5.1 将启动及 WebSocket 诊断写入游戏的 `logs/latest.log`。搜索 `TAXILink` 可以看到启动、握手失败以及平台确认订阅的记录。同机测试先确认后端正在监听模组连接端口。
 
 0.5.0 将车厂白名单、车辆中心、订单日志全部隔离到当前存档的 MTR 维度数据目录内（`taxilink-state`）。旧实例白名单不再自动套用到其他存档；升级前结束旧活动订单，并按 [车辆中心与运营接口](docs/VEHICLE_CENTERS.md) 迁移或重新授权。网页增删授权即时生效，手动编辑后使用 `/taxilink reload-depots` 重新读取。
 

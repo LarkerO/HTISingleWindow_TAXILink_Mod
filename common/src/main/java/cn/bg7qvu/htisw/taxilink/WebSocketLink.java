@@ -47,7 +47,10 @@ public final class WebSocketLink implements AutoCloseable {
         builder.buildAsync(URI.create(config.endpoint), new Listener())
             .whenComplete((ws, error) -> {
                 connecting.set(false);
-                if (error != null) retry();
+                if (error != null) {
+                    retry();
+                    TaxiLink.LOG.warn("TAXILink WebSocket handshake failed for {}", config.serverId, error);
+                }
                 else if (closed) ws.abort();
             });
     }
@@ -92,9 +95,16 @@ public final class WebSocketLink implements AutoCloseable {
                     String payload = sm2 == null ? text.toString() : sm2.verify("gateway", text.toString());
                     if (payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > config.maxMessageBytes)
                         throw new IllegalArgumentException("Message too large");
-                    incoming.accept(Json.object(payload));
+                    JsonObject message = Json.object(payload);
+                    if ("subscribed".equals(Json.string(message, "type"))) {
+                        TaxiLink.LOG.info("TAXILink WebSocket subscription confirmed for {}", config.serverId);
+                    }
+                    incoming.accept(message);
                 }
-                catch (Exception e) { disconnected(ws); ws.abort(); return null; }
+                catch (Exception e) {
+                    TaxiLink.LOG.warn("TAXILink WebSocket message rejected", e);
+                    disconnected(ws); ws.abort(); return null;
+                }
                 text.setLength(0); bytes = 0;
             }
             ws.request(1); return null;
@@ -102,8 +112,14 @@ public final class WebSocketLink implements AutoCloseable {
         @Override public CompletionStage<?> onPing(WebSocket ws, ByteBuffer message) { ws.request(1); return ws.sendPong(message); }
         @Override public CompletionStage<?> onPong(WebSocket ws, ByteBuffer message) { lastPong = System.currentTimeMillis(); ws.request(1); return null; }
         @Override public CompletionStage<?> onBinary(WebSocket ws, ByteBuffer message, boolean last) { ws.sendClose(1003, "JSON text only"); disconnected(ws); return null; }
-        @Override public CompletionStage<?> onClose(WebSocket ws, int code, String reason) { disconnected(ws); return null; }
-        @Override public void onError(WebSocket ws, Throwable error) { disconnected(ws); ws.abort(); }
+        @Override public CompletionStage<?> onClose(WebSocket ws, int code, String reason) {
+            if (!closed) TaxiLink.LOG.warn("TAXILink WebSocket closed with status {}", code);
+            disconnected(ws); return null;
+        }
+        @Override public void onError(WebSocket ws, Throwable error) {
+            if (!closed) TaxiLink.LOG.warn("TAXILink WebSocket failed", error);
+            disconnected(ws); ws.abort();
+        }
     }
     @Override public void close() {
         closed = true; WebSocket active = socket; socket = null;

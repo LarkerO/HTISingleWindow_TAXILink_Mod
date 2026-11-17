@@ -7,7 +7,7 @@ import java.util.function.Consumer;
 
 /** No Minecraft members are referenced: identical common bytecode on Mojmap NeoForge and Fabric intermediary. */
 public final class TaxiLink {
-    public static final System.Logger LOG = System.getLogger("TAXILink");
+    public static final org.apache.logging.log4j.Logger LOG = org.apache.logging.log4j.LogManager.getLogger("TAXILink");
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean();
     private static TaxiRuntime runtime;
     private TaxiLink() {}
@@ -21,12 +21,12 @@ public final class TaxiLink {
                     Path configPath = ((Path) platform.getMethod("getConfigFolder").invoke(null)).resolve("taxilink.json");
                     Config config = Config.load(configPath);
                     if (!config.enabled) {
-                        LOG.log(System.Logger.Level.INFO, "Disabled. Configure " + configPath.toAbsolutePath() + " to enable TAXILink.");
+                        LOG.info("Disabled. Configure " + configPath.toAbsolutePath() + " to enable TAXILink.");
                         return;
                     }
                     runtime = new TaxiRuntime(config, null);
                     runtime.start();
-                } catch (Exception e) { LOG.log(System.Logger.Level.ERROR, "TAXILink startup failed", e); }
+                } catch (Exception e) { LOG.error("TAXILink startup failed", e); }
             });
             lifecycle("SERVER_STOPPING", () -> { if (runtime != null) { runtime.close(); runtime = null; } PlayerNames.clear(); VehicleControl.clear(); });
             registerEvent("CommandRegistrationEvent", "EVENT", args -> DepotReloadCommand.register(args[0], () -> runtime));

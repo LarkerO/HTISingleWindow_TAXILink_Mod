@@ -26,7 +26,7 @@ final class PlayerNames {
                         (String) profile.getClass().getMethod("getName").invoke(profile));
                 }
             } catch (ReflectiveOperationException e) {
-                TaxiLink.LOG.log(System.Logger.Level.WARNING, "Cannot resolve player profiles", e);
+                TaxiLink.LOG.warn("Cannot resolve player profiles", e);
             } finally { lastRefresh = System.currentTimeMillis(); pending.set(false); }
         });
     }

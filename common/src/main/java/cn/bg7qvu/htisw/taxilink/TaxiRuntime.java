@@ -39,7 +39,7 @@ public final class TaxiRuntime implements AutoCloseable {
     public void start() throws ReflectiveOperationException {
         MtrAccess.verify();
         timer.scheduleWithFixedDelay(this::pulse, 0, 250, TimeUnit.MILLISECONDS);
-        TaxiLink.LOG.log(System.Logger.Level.INFO, "Started TAXILink for " + config.serverId);
+        TaxiLink.LOG.info("Started TAXILink for " + config.serverId);
     }
     private void pulse() {
         if (closed) return;
@@ -57,7 +57,7 @@ public final class TaxiRuntime implements AutoCloseable {
             }
             link.tick();
         } catch (Exception e) {
-            if (System.currentTimeMillis() - lastErrorLog > 30000) { lastErrorLog = System.currentTimeMillis(); TaxiLink.LOG.log(System.Logger.Level.ERROR, "Bridge unavailable", e); }
+            if (System.currentTimeMillis() - lastErrorLog > 30000) { lastErrorLog = System.currentTimeMillis(); TaxiLink.LOG.error("Bridge unavailable", e); }
         }
     }
     private void process(Context c) {
@@ -94,7 +94,7 @@ public final class TaxiRuntime implements AutoCloseable {
             c.rides.tick(c.simulator, telemetry);
         } catch (Exception e) {
             JsonObject request; while ((request = c.commands.poll()) != null) { pending.decrementAndGet(); reject(request, "RECOVERY_FAILED", "Journal recovery needs operator attention; inspect server log"); }
-            if (System.currentTimeMillis() - lastErrorLog > 30000) { lastErrorLog = System.currentTimeMillis(); TaxiLink.LOG.log(System.Logger.Level.ERROR, "Simulator processing failed", e); }
+            if (System.currentTimeMillis() - lastErrorLog > 30000) { lastErrorLog = System.currentTimeMillis(); TaxiLink.LOG.error("Simulator processing failed", e); }
         } finally { c.enqueued.set(false); }
     }
     private void receive(JsonObject request) {

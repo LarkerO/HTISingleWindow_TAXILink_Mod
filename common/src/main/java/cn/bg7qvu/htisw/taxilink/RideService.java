@@ -236,7 +236,7 @@ public final class RideService {
                 allowlist.set(sim.dimension, depotId, add);
             }
         } catch (IOException e) {
-            TaxiLink.LOG.log(System.Logger.Level.ERROR, "Cannot update TAXILink depot allowlist", e);
+            TaxiLink.LOG.error("Cannot update TAXILink depot allowlist", e);
             throw new Fault("ALLOWLIST_IO_ERROR", "Check the current world taxilink-depots.json and server log");
         }
         return data("dimension", sim.dimension, "depotIds", allowlist.ids(sim.dimension));
@@ -378,7 +378,7 @@ public final class RideService {
                 restore(sim, ride); ride.phase = "FAILED";
                 ride.error = e instanceof Fault f ? f.code : "MTR_ERROR";
                 save(ride); emit(ride, "ride.failed");
-                TaxiLink.LOG.log(System.Logger.Level.ERROR, "Ride failed: " + ride.orderId, e);
+                TaxiLink.LOG.error("Ride failed: " + ride.orderId, e);
             }
         }
         drainQueue(sim);
@@ -395,7 +395,7 @@ public final class RideService {
                     ride.geometry = rideGeometry(sim, ride, active);
             } catch (Exception e) {
                 // A corrupt/incomplete path must never prevent safe infrastructure restoration.
-                TaxiLink.LOG.log(System.Logger.Level.WARNING, "Cannot cache final geometry: " + ride.orderId, e);
+                TaxiLink.LOG.warn("Cannot cache final geometry: " + ride.orderId, e);
             }
         }
         VehicleControl.silent(ride.routeId, false);
