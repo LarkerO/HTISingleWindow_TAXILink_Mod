@@ -1,3 +1,5 @@
+发布与升级说明：[0.5.2](docs/RELEASE_0.5.2.md)。
+
 # TAXILink
 
 服务端网约车调度桥接模组。Minecraft **1.21.1**、Architectury API **13.0.8**、MTR **4.1.0-beta.2**、Java **21**。包名前缀 `cn.bg7qvu.htisw.taxilink`。
@@ -31,8 +33,8 @@ $env:JAVA_HOME = 'C:\Program Files\Zulu\zulu-21'
 
 构建产物：
 
-- `fabric/build/libs/taxilink-fabric-1.21.1-0.5.1.jar`
-- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.5.1.jar`
+- `fabric/build/libs/taxilink-fabric-1.21.1-0.5.2.jar`
+- `neoforge/build/libs/taxilink-neoforge-1.21.1-0.5.2.jar`
 
 选对应加载器 jar 放入服务端 `mods`。不要安装 common jar、sources jar 或同时安装两个版本。服务端另装对应平台的 Architectury 13.0.8 和 MTR 4.1.0-beta.2。根目录提供的 MTR jar 的 NeoForge 元数据声明 Minecraft 1.21.1；Fabric 服务端需要另用 MTR 的 Fabric 发行包。
 

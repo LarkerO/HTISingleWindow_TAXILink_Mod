@@ -44,7 +44,7 @@ public final class WebSocketLink implements AutoCloseable {
         } catch (RuntimeException e) {
             connecting.set(false); retry(); throw e;
         }
-        builder.buildAsync(URI.create(config.endpoint), new Listener())
+        try { builder.buildAsync(URI.create(config.endpoint), new Listener())
             .whenComplete((ws, error) -> {
                 connecting.set(false);
                 if (error != null) {
@@ -52,7 +52,7 @@ public final class WebSocketLink implements AutoCloseable {
                     TaxiLink.LOG.warn("TAXILink WebSocket handshake failed for {}", config.serverId, error);
                 }
                 else if (closed) ws.abort();
-            });
+            }); } catch (RuntimeException e) { connecting.set(false); retry(); TaxiLink.LOG.warn("TAXILink connection could not start", e); }
     }
     private synchronized void retry() {
         nextAttempt = System.currentTimeMillis() + Math.min(60000, 1000L << Math.min(failures++, 6)) + ThreadLocalRandom.current().nextInt(500);
@@ -124,6 +124,6 @@ public final class WebSocketLink implements AutoCloseable {
     @Override public void close() {
         closed = true; WebSocket active = socket; socket = null;
         if (active != null) active.abort();
-        client.close();
+        client.shutdownNow();
     }
 }
