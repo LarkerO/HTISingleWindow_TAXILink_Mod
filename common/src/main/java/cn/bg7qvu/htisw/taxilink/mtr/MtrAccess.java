@@ -6,6 +6,9 @@ import org.mtr.core.tool.Angle;
 import java.lang.reflect.*;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.LongFunction;
+import org.mtr.libraries.com.google.gson.*;
+import org.mtr.libraries.it.unimi.dsi.fastutil.doubles.DoubleDoubleImmutablePair;
 
 /** Version-locked private API boundary for MTR 4.1.0-beta.2. Never bundle MTR. */
 public final class MtrAccess {
@@ -44,10 +47,15 @@ public final class MtrAccess {
     }
     /** Keep speed and pickup dwell changes on this order's path, away from shared rails and platforms. */
     public static void configureRidePaths(Siding siding, double speedKmh, long pickupPlatformId, long pickupDwellMillis) {
+        configureRidePaths(siding, speedKmh, pickupPlatformId, pickupDwellMillis, Long.MIN_VALUE, 0);
+    }
+    public static void configureRidePaths(Siding siding, double speedKmh, long pickupPlatformId, long pickupDwellMillis, long dropoffPlatformId, long dropoffDwellMillis) {
         double cap = speedKmh / 3600D;
         for (String name : List.of("pathSidingToMainRoute", "pathMainRoute", "pathMainRouteToSiding")) {
             @SuppressWarnings("unchecked") List<PathData> paths = (List<PathData>) read(siding, name);
-            paths.replaceAll(p -> p.getSavedRailBaseId() == pickupPlatformId && p.getDwellTime() > 0 && p.getDwellTime() < pickupDwellMillis
+            paths.replaceAll(p -> p.getSavedRailBaseId() == dropoffPlatformId && p.getDwellTime() > 0
+                ? new LimitedPath(p, cap, Math.max(p.getDwellTime(), dropoffDwellMillis))
+                : p.getSavedRailBaseId() == pickupPlatformId && p.getDwellTime() > 0 && p.getDwellTime() < pickupDwellMillis
                 ? new LimitedPath(p, cap, pickupDwellMillis)
                 : new LimitedPath(p, cap));
         }
@@ -65,6 +73,40 @@ public final class MtrAccess {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("Cannot release MTR pickup dwell", e);
         }
+    }
+    public static JsonArray blockingVehicles(Simulator sim, Vehicle vehicle, double distance, LongFunction<JsonObject> match) {
+        JsonArray result = new JsonArray();
+        try {
+            double progress = ((Number) read(vehicle, "railProgress")).doubleValue();
+            double end = progress + Math.max(0, distance) + vehicle.getTransportMode().stoppingSpace + 1;
+            List<?> frames = (List<?>) ((List<?>) read(sim, "vehiclePositions")).get(vehicle.getTransportMode().ordinal());
+            Method boundsMethod = Vehicle.class.getDeclaredMethod("getBlockedBounds", PathData.class, double.class, double.class);
+            boundsMethod.setAccessible(true);
+            Set<Long> ids = new LinkedHashSet<>();
+            for (PathData path : vehicle.vehicleExtraData.immutablePath) {
+                if (path.getEndDistance() < progress || path.getStartDistance() > end) continue;
+                DoubleDoubleImmutablePair bounds = (DoubleDoubleImmutablePair) boundsMethod.invoke(null, path, progress, end);
+                for (Object frame : frames) {
+                    Object atStart = ((Map<?, ?>) frame).get(path.getOrderedPosition1());
+                    Object position = atStart instanceof Map<?, ?> map ? map.get(path.getOrderedPosition2()) : null;
+                    if (position == null) continue;
+                    for (Object segment : (List<?>) read(position, "blockedSegments")) {
+                        long id = ((Number) read(segment, "id")).longValue();
+                        double start = ((Number) read(segment, "startDistance")).doubleValue();
+                        double stop = ((Number) read(segment, "endDistance")).doubleValue();
+                        if (id != vehicle.getId() && Math.min(bounds.rightDouble(), stop) > Math.max(bounds.leftDouble(), start)) ids.add(id);
+                    }
+                }
+            }
+            for (long id : ids.stream().limit(20).toList()) {
+                JsonObject item = match.apply(id); item.addProperty("vehicleId", Long.toString(id));
+                item.addProperty("source", "mtr_occupied_segment"); result.add(item);
+            }
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            // Diagnostics must never destroy or modify a running vehicle.
+            return new JsonArray();
+        }
+        return result;
     }
     private static final class LimitedPath extends PathData {
         private final double cap;

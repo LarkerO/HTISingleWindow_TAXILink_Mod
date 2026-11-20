@@ -118,6 +118,8 @@ class OperationsTest {
         call("taxi.control", data("orderId", "test-order", "mode", "resume")); assertFalse(VehicleControl.block(v));
         for (int i=0; i<5; i++) tick(); assertTrue(v.isMoving());
         assertTrue(v.vehicleExtraData.immutablePath.stream().allMatch(p -> p.getSpeedLimitMetersPerMillisecond() <= 30/3600D));
+        assertEquals("VEHICLE_MOVING", assertThrows(Fault.class, () -> call("taxi.destroy", query("test-order"))).code);
+        call("taxi.control", data("orderId", "test-order", "mode", "emergency")); VehicleControl.block(v);
         call("taxi.destroy", query("test-order")); assertFalse(VehicleControl.silent(route));
     }
     @Test void passengerVisitsAndTimelinePersistAfterCompletion() throws Exception {
@@ -132,6 +134,7 @@ class OperationsTest {
         f.siding.updateVehicleRidingEntities(v.getId(), new ObjectArrayList<>(List.of(f.riding(player, 0))));
         assertEquals(2, call("taxi.passengers", query("test-order")).getAsJsonArray("passengerHistory").size());
         f.siding.updateVehicleRidingEntities(v.getId(), new ObjectArrayList<>(List.of(f.riding(player, -1)))); call("taxi.passengers", query("test-order"));
+        call("taxi.control", data("orderId", "test-order", "mode", "emergency")); VehicleControl.block(v);
         call("taxi.destroy", query("test-order"));
         RideService restarted = new RideService(f.config, temp.resolve("journal"), f.sim.dimension, e -> {}); restarted.recover(f.sim);
         assertEquals(2, restarted.command(f.sim, "taxi.passengers", query("test-order")).getAsJsonArray("passengerHistory").size());

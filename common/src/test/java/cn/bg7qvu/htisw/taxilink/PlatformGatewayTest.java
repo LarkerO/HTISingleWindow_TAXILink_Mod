@@ -90,6 +90,12 @@ class PlatformGatewayTest {
                 JsonObject created = object(rpc(http,token,"taxi.create",fixture.request()).body());
                 assertTrue(created.get("ok").getAsBoolean(),created.toString());
                 assertEquals(Long.toString(fixture.depot.getId()),created.getAsJsonObject("data").get("depotId").getAsString());
+                JsonObject doors = object(rpc(http,token,"taxi.doors",data("orderId","test-order","state","open")).body());
+                assertFalse(doors.get("ok").getAsBoolean(),doors.toString());
+                assertEquals("VEHICLE_NOT_READY",doors.getAsJsonObject("error").get("code").getAsString());
+                JsonObject blocker = object(rpc(http,token,"taxi.clear_returning",data("orderId","test-order","targetOrderId","unknown")).body());
+                assertFalse(blocker.get("ok").getAsBoolean(),blocker.toString());
+                assertEquals("BLOCKER_CHANGED",blocker.getAsJsonObject("error").get("code").getAsString());
                 JsonObject cancelled = object(rpc(http,token,"taxi.destroy",data("orderId","test-order")).body());
                 assertEquals("DESTROYED",cancelled.getAsJsonObject("data").get("phase").getAsString());
                 Path checkLogs = Files.writeString(temp.resolve("check-logs.php"), """

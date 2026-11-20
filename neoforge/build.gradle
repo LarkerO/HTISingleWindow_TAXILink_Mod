@@ -1,5 +1,6 @@
 dependencies {
     implementation project(':common')
+    compileOnly 'net.fabricmc:sponge-mixin:0.15.5+mixin.0.8.7'
     compileOnly 'net.neoforged.fancymodloader:loader:4.0.39'
 }
 jar { archiveBaseName = 'taxilink-neoforge-1.21.1'; from project(':common').sourceSets.main.output }

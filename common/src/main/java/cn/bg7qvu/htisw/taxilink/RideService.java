@@ -38,6 +38,9 @@ public final class RideService {
         public long queuedUntil, queueTicket;
         public double commandedSpeedKmh;
         public List<JsonObject> history = new ArrayList<>(), passengerHistory = new ArrayList<>();
+        public JsonObject obstruction;
+        private transient long dropoffSince = -1, dropoffEmptySince = -1, dropoffDepartAt = -1, blockedSince = -1;
+        private transient boolean dropoffReleased, manualDoorsOpen;
         private transient long pickupSince = -1, pickupDoorsOpenedAt = -1, fullSince = -1, departAt = -1;
         private transient boolean pickupReleased, pickupPassed;
         private transient int observedDoors = -1;
@@ -110,6 +113,20 @@ public final class RideService {
         Ride ride = rides.get(string(p, "orderId"));
         if (ride == null) throw new Fault("ORDER_NOT_FOUND", "Unknown orderId");
         return switch (type) {
+            case "taxi.clear_returning" -> {
+                Ride target = rides.get(string(p, "targetOrderId"));
+                Vehicle waiting = vehicle(sim, ride), blocker = target == null ? null : vehicle(sim, target);
+                ObstructionTracker.Sample sample = waiting == null ? null : ObstructionTracker.sample(waiting);
+                if (target == null || target == ride || target.terminal() || waiting == null || waiting.isMoving() || blocker == null || sample == null || System.currentTimeMillis() - sample.at() > 1500)
+                    throw new Fault("BLOCKER_CHANGED", "Refresh live obstruction details before clearing");
+                updateStage(target, blocker);
+                if (!"RETURNING".equals(target.stage)) throw new Fault("NOT_RETURNING", "Only an empty returning order can be cleared");
+                JsonArray matches = obstructionVehicles(sim, ride, waiting, sample.distance());
+                boolean matched = false;
+                for (JsonElement element : matches) if (Long.toString(target.vehicleId).equals(element.getAsJsonObject().get("vehicleId").getAsString())) matched = true;
+                if (!matched) throw new Fault("BLOCKER_CHANGED", "The vehicle no longer occupies the detected track");
+                yield command(sim, "taxi.destroy", data("orderId", target.orderId));
+            }
             case "taxi.status" -> status(sim, ride);
             case "taxi.geometry" -> {
                 Vehicle v = vehicle(sim, ride);
@@ -147,6 +164,8 @@ public final class RideService {
             case "taxi.destroy" -> {
                 if (!ride.terminal()) {
                     if (!passengers(sim, ride).isEmpty()) throw new Fault("VEHICLE_OCCUPIED", "Passengers must disembark before destruction");
+                    Vehicle target = vehicle(sim, ride);
+                    if (target != null && target.isMoving()) throw new Fault("VEHICLE_MOVING", "Stop the vehicle before destruction");
                     restore(sim, ride); ride.phase = "DESTROYED"; save(ride); emit(ride, "ride.destroyed");
                 }
                 yield summary(ride);
@@ -157,11 +176,16 @@ public final class RideService {
                 Vehicle vehicle = vehicle(sim, ride);
                 if (vehicle == null || ride.terminal()) throw new Fault("VEHICLE_NOT_READY", "Vehicle is not active");
                 if (vehicle.isMoving()) throw new Fault("VEHICLE_MOVING", "Door commands require a stopped vehicle");
+                if (state.equals("closed") && stopAt(ride, vehicle, "dropoffPlatformId") != null && !passengers(sim, ride).isEmpty())
+                    throw new Fault("PASSENGERS_DISEMBARKING", "Passengers must disembark before closing at destination");
                 if (state.equals("open") && pickupStop(ride, vehicle) != null) {
                     if (ride.pickupReleased) throw new Fault("DEPARTURE_IN_PROGRESS", "Pickup departure has already been released");
                     ride.departAt = ride.fullSince = -1;
                 }
                 DoorControl.set(vehicle.vehicleExtraData, state.equals("open"));
+                ride.manualDoorsOpen = state.equals("open");
+                VehicleControl.hold(vehicle, ride.manualDoorsOpen || "emergency".equals(ride.controlMode));
+                if (ride.manualDoorsOpen && stopAt(ride, vehicle, "dropoffPlatformId") != null) { ride.dropoffDepartAt = -1; ride.dropoffReleased = false; }
                 MtrAccess.invoke(vehicle.vehicleExtraData, state.equals("open") ? "openDoors" : "closeDoors");
                 emit(ride, state.equals("open") ? "ride.doors_open_command" : "ride.doors_closed_command");
                 yield data("orderId", ride.orderId, "doorTarget", state, "control", "held_until_next_command");
@@ -182,6 +206,8 @@ public final class RideService {
 
     private void scheduleDeparture(Ride ride, Vehicle v, long now) {
         if (ride.departAt >= 0) return;
+        ride.manualDoorsOpen = false;
+        if (!"emergency".equals(ride.controlMode)) VehicleControl.hold(v, false);
         DoorControl.set(v.vehicleExtraData, false);
         MtrAccess.invoke(v.vehicleExtraData, "closeDoors");
         ride.departAt = now + config.closedDoorDepartureDelaySeconds * 1000L;
@@ -189,7 +215,7 @@ public final class RideService {
     }
 
     private void tickPickup(Simulator sim, Ride ride, Vehicle v) {
-        if (ride.pickupPassed || "emergency".equals(ride.controlMode)) return;
+        if (ride.pickupPassed || ride.manualDoorsOpen || "emergency".equals(ride.controlMode)) return;
         PathData stop = pickupStop(ride, v);
         if (stop == null) {
             if (ride.pickupSince >= 0 || ride.departAt >= 0) {
@@ -338,7 +364,8 @@ public final class RideService {
                         siding.clearVehicles();
                         ride.error = null;
                         long dwell = (config.pickupWaitSeconds + config.closedDoorDepartureDelaySeconds + 10L) * 1000;
-                        MtrAccess.configureRidePaths(siding, ride.params.get("maxSpeedKmh").getAsDouble(), id(ride.params, "pickupPlatformId"), dwell);
+                        MtrAccess.configureRidePaths(siding, ride.params.get("maxSpeedKmh").getAsDouble(), id(ride.params, "pickupPlatformId"), dwell,
+                            id(ride.params, "dropoffPlatformId"), 86_400_000L);
                         siding.startGeneratingDepartures();
                         long departure = sim.getCurrentMillis() + 1000;
                         depot.getRealTimeDepartures().add(departure);
@@ -360,7 +387,7 @@ public final class RideService {
                         if (!passengers(sim, ride).isEmpty()) { ride.phase = "AWAITING_DISEMBARK"; save(ride); emit(ride, "ride.awaiting_disembark"); }
                         else complete(sim, ride);
                     } else {
-                        tickPickup(sim, ride, v); updateStage(ride, v);
+                        tickPickup(sim, ride, v); updateStage(ride, v); tickDropoff(sim, ride, v); tickObstruction(sim, ride, v);
                         int open = v.vehicleExtraData.getDoorMultiplier() > 0 ? 1 : 0;
                         if (ride.observedDoors != open && (ride.observedDoors >= 0 || open == 1)) emit(ride, open == 1 ? "ride.doors_opened" : "ride.doors_closed");
                         ride.observedDoors = open;
@@ -400,7 +427,7 @@ public final class RideService {
         }
         VehicleControl.silent(ride.routeId, false);
         Siding siding = sim.sidingIdMap.get(ride.sidingId); Depot depot = sim.depotIdMap.get(ride.depotId);
-        if (siding != null) { siding.iterateVehicles(v -> { DoorControl.remove(v.vehicleExtraData); VehicleControl.hold(v, false); }); siding.clearVehicles(); siding.updateData(new JsonReader(ride.sidingBackup)); }
+        if (siding != null) { siding.iterateVehicles(v -> { DoorControl.remove(v.vehicleExtraData); ObstructionTracker.remove(v); VehicleControl.hold(v, false); }); siding.clearVehicles(); siding.updateData(new JsonReader(ride.sidingBackup)); }
         if (depot != null) depot.updateData(new JsonReader(ride.depotBackup));
         sim.routes.removeIf(r -> r.getId() == ride.routeId);
         sim.sync();
@@ -427,7 +454,9 @@ public final class RideService {
             "routeName", ride.params.has("routeName") ? ride.params.get("routeName").getAsString() : "TAXILink " + ride.plate,
             "routeNumber", ride.plate, "routeHidden", true, "capacity", capacity(ride),
             "requestedPassengerCount", ride.params.has("passengerCount") ? ride.params.get("passengerCount").getAsInt() : 1,
-            "vehicleId", ride.vehicleId == 0 ? null : Long.toString(ride.vehicleId), "error", ride.error);
+            "vehicleId", ride.vehicleId == 0 ? null : Long.toString(ride.vehicleId), "error", ride.error,
+            "assistanceRequired", ride.obstruction != null && ride.obstruction.get("assistanceRequired").getAsBoolean(), "obstruction", ride.obstruction,
+            "dropoffReleased", ride.dropoffReleased);
     }
     private int capacity(Ride ride) {
         int result = 0;
@@ -456,6 +485,9 @@ public final class RideService {
         JsonObject result = summary(ride); Vehicle v = vehicle(sim, ride);
         passengerStatus(sim, ride).entrySet().forEach(e -> result.add(e.getKey(), e.getValue()));
         result.addProperty("sampledAt", System.currentTimeMillis());
+        result.add("obstruction", ride.obstruction == null ? JsonNull.INSTANCE : ride.obstruction.deepCopy());
+        result.addProperty("assistanceRequired", ride.obstruction != null && ride.obstruction.get("assistanceRequired").getAsBoolean());
+        result.addProperty("dropoffReleased", ride.dropoffReleased);
         result.add("position", JsonNull.INSTANCE); result.add("etaPickupSeconds", JsonNull.INSTANCE); result.add("etaDropoffSeconds", JsonNull.INSTANCE);
         if (v != null && !ride.terminal()) {
             var head = v.getHeadPositionAndTiltAngle();
@@ -613,7 +645,7 @@ public final class RideService {
             }
             case "automatic", "resume" -> {
                 MtrAccess.controlSpeed(v, ride.params.get("maxSpeedKmh").getAsDouble());
-                VehicleControl.hold(v, false); ride.commandedSpeedKmh = ride.params.get("maxSpeedKmh").getAsDouble(); mode = "automatic";
+                VehicleControl.hold(v, ride.manualDoorsOpen || (ride.dropoffSince >= 0 && !ride.dropoffReleased)); ride.commandedSpeedKmh = ride.params.get("maxSpeedKmh").getAsDouble(); mode = "automatic";
             }
             default -> throw new Fault("INVALID_REQUEST", "mode must be speed, emergency, resume or automatic");
         }
@@ -621,6 +653,67 @@ public final class RideService {
         return status(sim, ride);
     }
 
+    private PathData stopAt(Ride ride, Vehicle v, String platform) {
+        if (v == null || v.isMoving() || !v.getIsOnRoute()) return null;
+        double progress = ((Number) MtrAccess.read(v, "railProgress")).doubleValue();
+        for (PathData path : v.vehicleExtraData.immutablePath)
+            if (path.getSavedRailBaseId() == id(ride.params, platform) && path.getDwellTime() > 0 && Math.abs(progress - path.getEndDistance()) < .001) return path;
+        return null;
+    }
+    private void tickDropoff(Simulator sim, Ride ride, Vehicle v) {
+        PathData stop = stopAt(ride, v, "dropoffPlatformId");
+        if (stop == null) {
+            if (ride.dropoffReleased && !ride.manualDoorsOpen) DoorControl.remove(v.vehicleExtraData);
+            return;
+        }
+        long now = sim.getCurrentMillis();
+        if (ride.dropoffSince < 0) { ride.dropoffSince = now; emit(ride, "ride.waiting_dropoff"); }
+        if (!passengers(sim, ride).isEmpty()) {
+            ride.dropoffEmptySince = ride.dropoffDepartAt = -1;
+            ride.dropoffReleased = false;
+        } else if (ride.dropoffEmptySince < 0) ride.dropoffEmptySince = now;
+        if (ride.dropoffReleased) return;
+        // Freeze only movement, never the MTR occupancy/passenger update loop.
+        VehicleControl.hold(v, true);
+        if (ride.dropoffDepartAt < 0) {
+            DoorControl.set(v.vehicleExtraData, true); MtrAccess.invoke(v.vehicleExtraData, "openDoors");
+            boolean empty = ride.dropoffEmptySince >= 0 && now - ride.dropoffEmptySince >= config.dropoffEmptyConfirmSeconds * 1000L;
+            if (empty && now - ride.dropoffSince >= config.dropoffMinWaitSeconds * 1000L + Vehicle.DOOR_MOVE_TIME && !ride.manualDoorsOpen && !"emergency".equals(ride.controlMode)) {
+                DoorControl.set(v.vehicleExtraData, false); MtrAccess.invoke(v.vehicleExtraData, "closeDoors");
+                ride.dropoffDepartAt = now + Math.max(config.closedDoorDepartureDelaySeconds * 1000L, Vehicle.DOOR_MOVE_TIME);
+                emit(ride, "ride.dropoff_empty_confirmed");
+            }
+        } else if (now >= ride.dropoffDepartAt && !"emergency".equals(ride.controlMode) && !ride.manualDoorsOpen) {
+            MtrAccess.releasePickup(v, stop); VehicleControl.hold(v, false); ride.dropoffReleased = true;
+            emit(ride, "ride.dropoff_departure_released");
+        }
+    }
+    private void tickObstruction(Simulator sim, Ride ride, Vehicle v) {
+        ObstructionTracker.Sample sample = ObstructionTracker.sample(v);
+        boolean blocked = sample != null && System.currentTimeMillis() - sample.at() < 1500 && !v.isMoving()
+            && !ride.manualDoorsOpen && !"emergency".equals(ride.controlMode)
+            && !("WAITING_DROPOFF".equals(ride.stage) && !ride.dropoffReleased) && !("WAITING_PICKUP".equals(ride.stage) && !ride.pickupReleased);
+        if (!blocked) {
+            ride.blockedSince = -1;
+            if (ride.obstruction != null) { ride.obstruction = null; emit(ride, "ride.obstruction_cleared"); }
+            return;
+        }
+        long now = sim.getCurrentMillis();
+        if (ride.blockedSince < 0) ride.blockedSince = now;
+        boolean required = now - ride.blockedSince >= config.obstructionWaitSeconds * 1000L;
+        boolean previous = ride.obstruction != null && ride.obstruction.get("assistanceRequired").getAsBoolean();
+        ride.obstruction = data("waitingSeconds", (now - ride.blockedSince) / 1000, "thresholdSeconds", config.obstructionWaitSeconds,
+            "assistanceRequired", required, "distanceMeters", sample.distance(), "blockers", obstructionVehicles(sim, ride, v, sample.distance()),
+            "explanation", "MTR 检测到前方轨道或信号占用；未匹配到车辆时不得推断为空轨");
+        if (required && !previous) emit(ride, "ride.obstruction_requires_assistance");
+    }
+    private JsonArray obstructionVehicles(Simulator sim, Ride ride, Vehicle v, double blockedDistance) {
+        return MtrAccess.blockingVehicles(sim, v, blockedDistance, vehicleId -> {
+            for (Ride candidate : rides.values()) if (!candidate.terminal() && candidate.vehicleId == vehicleId)
+                return data("orderId", candidate.orderId, "stage", stage(candidate), "returning", "RETURNING".equals(candidate.stage));
+            return data();
+        });
+    }
     private JsonObject rideGeometry(Simulator sim, Ride ride, Vehicle v) {
         JsonObject geometry = ride.geometry == null ? RoutePreview.geometry(sim, v.vehicleExtraData.immutablePath, 0) : ride.geometry.deepCopy();
         double pickup = stopDistance(v, id(ride.params, "pickupPlatformId"));
@@ -690,7 +783,7 @@ public final class RideService {
         save(ride);
     }
     private void emit(Ride ride, String type) {
-        log(ride, type, data());
+        log(ride, type, type.startsWith("ride.obstruction") && ride.obstruction != null ? ride.obstruction.deepCopy() : data());
         events.accept(data("type", type, "data", summary(ride)));
     }
 }

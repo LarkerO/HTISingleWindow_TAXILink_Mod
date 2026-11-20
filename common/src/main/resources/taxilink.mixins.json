@@ -2,6 +2,7 @@
   "required": true,
   "package": "cn.bg7qvu.htisw.taxilink.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["VehicleDoorsMixin", "VehicleMotionMixin", "RouteAnnouncementsMixin"],
+  "mixins": ["VehicleDoorsMixin", "VehicleMotionMixin", "VehicleObstructionMixin", "RouteAnnouncementsMixin"],
+  "client": ["PlatformlessDoorsMixin"],
   "injectors": { "defaultRequire": 1 }
 }

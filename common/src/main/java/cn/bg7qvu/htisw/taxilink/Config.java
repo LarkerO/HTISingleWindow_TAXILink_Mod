@@ -22,6 +22,9 @@ public final class Config {
     public int pickupWaitSeconds = 300;
     public int fullBoardingCloseDelaySeconds = 5;
     public int closedDoorDepartureDelaySeconds = 5;
+    public int dropoffMinWaitSeconds = 10;
+    public int dropoffEmptyConfirmSeconds = 5;
+    public int obstructionWaitSeconds = 60;
     public int maxActiveRides = 64;
     public int queueTimeoutSeconds = 120;
     public int maxQueuedRides = 256;
@@ -61,6 +64,8 @@ public final class Config {
         return allowedDepotIds(dimension).contains(Long.toString(depot));
     }
     public void validate() {
+        if (dropoffMinWaitSeconds < 1 || dropoffMinWaitSeconds > 600 || dropoffEmptyConfirmSeconds < 1 || dropoffEmptyConfirmSeconds > 60 || obstructionWaitSeconds < 5 || obstructionWaitSeconds > 3600)
+            throw new IllegalArgumentException("Invalid TAXILink dropoff/obstruction timing");
         if (queueTimeoutSeconds < 1 || queueTimeoutSeconds > 86400 || maxQueuedRides < 1 || maxQueuedRides > 4096)
             throw new IllegalArgumentException("Invalid TAXILink queue limits");
         if (pickupWaitSeconds < 1 || pickupWaitSeconds > 3600 || fullBoardingCloseDelaySeconds < 0
@@ -100,7 +105,8 @@ public final class Config {
         // Preserve old nonempty embedded lists for an explicit operator migration.
         boolean changed = fresh;
         if (config.allowedDepots.isEmpty()) changed |= root.remove("allowedDepots") != null;
-        for (var setting : Map.of("queueTimeoutSeconds", config.queueTimeoutSeconds, "maxQueuedRides", config.maxQueuedRides,
+        for (var setting : Map.of("dropoffMinWaitSeconds", config.dropoffMinWaitSeconds, "dropoffEmptyConfirmSeconds", config.dropoffEmptyConfirmSeconds,
+            "obstructionWaitSeconds", config.obstructionWaitSeconds, "queueTimeoutSeconds", config.queueTimeoutSeconds, "maxQueuedRides", config.maxQueuedRides,
             "pickupWaitSeconds", config.pickupWaitSeconds,
             "fullBoardingCloseDelaySeconds", config.fullBoardingCloseDelaySeconds,
             "closedDoorDepartureDelaySeconds", config.closedDoorDepartureDelaySeconds).entrySet()) {
