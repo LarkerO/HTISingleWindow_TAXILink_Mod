@@ -74,7 +74,7 @@ public final class TaxiRuntime implements AutoCloseable {
                         c.quotes.add(new PendingQuote(request, RoutePreview.quote(c.simulator, c.config, c.rides.resolveQuote(c.simulator, payload)), System.nanoTime() + TimeUnit.SECONDS.toNanos(12)));
                         continue;
                     }
-                    JsonObject result = c.rides.command(c.simulator, string(request, "type"), payload);
+                    JsonObject result = string(request, "type").equals("player.position") ? PlayerNames.position(string(payload, "name"), c.simulator.dimension) : c.rides.command(c.simulator, string(request, "type"), payload);
                     link.send(data("type", "response", "requestId", request.get("requestId").getAsString(), "ok", true, "data", result));
                 } catch (Exception e) { reject(request, e instanceof Fault f ? f.code : "INTERNAL_ERROR", e instanceof Fault ? e.getMessage() : "MTR operation failed; inspect server log"); }
             }
@@ -110,7 +110,7 @@ public final class TaxiRuntime implements AutoCloseable {
                 link.send(data("type", "response", "requestId", request.get("requestId").getAsString(), "ok", true, "data", data("dimensions", dimensions)));
                 return;
             }
-            if (!Set.of("taxi.clear_returning", "taxi.centers.list", "taxi.centers.put", "taxi.centers.remove", "taxi.centers.reload", "taxi.logs", "taxi.control", "taxi.quote", "taxi.geometry", "taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers").contains(type)
+            if (!Set.of("player.position", "taxi.clear_returning", "taxi.centers.list", "taxi.centers.put", "taxi.centers.remove", "taxi.centers.reload", "taxi.logs", "taxi.control", "taxi.quote", "taxi.geometry", "taxi.create", "taxi.status", "taxi.list", "taxi.doors", "taxi.depart", "taxi.destroy", "taxi.passengers").contains(type)
                 && !MtrCatalog.COMMANDS.contains(type) && !RideService.DEPOT_COMMANDS.contains(type)) throw new Fault("UNKNOWN_COMMAND", type);
             String dimension = string(request, "dimension");
             Context context = contexts.get(dimension);
